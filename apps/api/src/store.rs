@@ -966,7 +966,7 @@ impl Store {
     // operation, not recreate its validation, recurrence, quota or sync rules.
     pub(crate) async fn create_task_in(
         &self,
-        mut transaction: &mut PgConnection,
+        transaction: &mut PgConnection,
         user_id: Uuid,
         request: CreateTaskRequest,
     ) -> AppResult<Task> {
@@ -985,16 +985,16 @@ impl Store {
                 "a recurring task cannot be created as completed".to_owned(),
             ));
         }
-        Self::lock_task_graph(&mut transaction, user_id).await?;
+        Self::lock_task_graph(transaction, user_id).await?;
         self.validate_task_relationships(
-            &mut transaction,
+            transaction,
             user_id,
             request.project_id,
             request.parent_task_id,
         )
         .await?;
 
-        let position = Self::next_task_position(&mut transaction, user_id).await?;
+        let position = Self::next_task_position(transaction, user_id).await?;
         let completed_at = (request.status == TaskStatus::Completed).then(Utc::now);
         let remind_at = request.remind_at;
         let task = sqlx::query_as::<_, Task>(
@@ -1060,8 +1060,8 @@ impl Store {
         .bind(completed_at)
         .fetch_one(&mut *transaction)
         .await?;
-        Self::ensure_labels(&mut transaction, user_id, &task.labels).await?;
-        Self::sync_task_calendar_event(&mut transaction, user_id, &task).await?;
+        Self::ensure_labels(transaction, user_id, &task.labels).await?;
+        Self::sync_task_calendar_event(transaction, user_id, &task).await?;
 
         Ok(task)
     }
@@ -1158,7 +1158,7 @@ impl Store {
 
     pub(crate) async fn update_task_scoped_in(
         &self,
-        mut transaction: &mut PgConnection,
+        transaction: &mut PgConnection,
         user_id: Uuid,
         task_id: Uuid,
         request: UpdateTaskRequest,
@@ -1185,16 +1185,16 @@ impl Store {
             ));
         }
         let result: AppResult<Task> = async {
-            Self::lock_task_graph(&mut transaction, user_id).await?;
+            Self::lock_task_graph(transaction, user_id).await?;
             self.validate_task_relationships(
-                &mut transaction,
+                transaction,
                 user_id,
                 request.project_id,
                 request.parent_task_id,
             )
             .await?;
             self.validate_task_update_relationships(
-                &mut transaction,
+                transaction,
                 user_id,
                 task_id,
                 request.project_id,
@@ -1203,16 +1203,13 @@ impl Store {
             )
             .await?;
 
-            let mut recurring = crate::task_recurrence::RecurringTaskState::load(
-                &mut transaction,
-                user_id,
-                task_id,
-            )
-            .await?;
+            let mut recurring =
+                crate::task_recurrence::RecurringTaskState::load(transaction, user_id, task_id)
+                    .await?;
             recurring.prepare(&request, scope)?;
             let previous_status = recurring.task.status;
             if previous_status == TaskStatus::Completed && request.status != TaskStatus::Completed {
-                Self::remove_next_occurrence_for_reopen(&mut transaction, user_id, task_id).await?;
+                Self::remove_next_occurrence_for_reopen(transaction, user_id, task_id).await?;
             }
             let completed_at = (request.status == TaskStatus::Completed).then(Utc::now);
             let remind_at = request.remind_at;
@@ -1284,13 +1281,13 @@ impl Store {
             .await?;
 
             if let Some(task) = task {
-                Self::ensure_labels(&mut transaction, user_id, &task.labels).await?;
-                Self::sync_task_calendar_event(&mut transaction, user_id, &task).await?;
+                Self::ensure_labels(transaction, user_id, &task.labels).await?;
+                Self::sync_task_calendar_event(transaction, user_id, &task).await?;
                 if previous_status != TaskStatus::Completed
                     && task.status == TaskStatus::Completed
                     && task.recurrence != TaskRecurrence::None
                 {
-                    Self::create_next_recurring_task(&mut transaction, user_id, &task).await?;
+                    Self::create_next_recurring_task(transaction, user_id, &task).await?;
                 }
                 return Ok(task);
             }

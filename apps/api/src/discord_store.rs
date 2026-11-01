@@ -304,7 +304,7 @@ impl Store {
                     .create_task_in(connection, owner.user_id, request)
                     .await?;
                 Ok(message(format!(
-                    "Added to Inbox: {}{}",
+                    "Added to Inbox: `{}`{}",
                     plain_title(&task.title, 200),
                     option(data, "due")
                         .map(|date| format!(" (deadline: {date}, {})", owner.timezone))
@@ -321,7 +321,7 @@ impl Store {
                 }
                 let mut text = format!("Today ({}) - up to 25 unfinished tasks:\n", owner.timezone);
                 for task in tasks {
-                    text.push_str(&format!("• {}\n", plain_title(&task.title, 65)));
+                    text.push_str(&format!("• `{}`\n", plain_title(&task.title, 60)));
                 }
                 text.push_str("Use /done to complete a task. Open rakkio for the full plan.");
                 Ok(message(text))
@@ -421,7 +421,7 @@ impl Store {
             .update_task_scoped_in(connection, owner.user_id, id, update, None)
             .await?;
         Ok(message(format!(
-            "Completed: {}",
+            "Completed: `{}`",
             plain_title(&task.title, 200)
         )))
     }

@@ -90,7 +90,9 @@ pub fn decode_hex(value: &str) -> anyhow::Result<Vec<u8>> {
     }
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| u8::from_str_radix(std::str::from_utf8(pair)?, 16).map_err(Into::into))
         .collect()
 }
@@ -236,15 +238,24 @@ impl Discord {
             "https://discord.com/api/v10/webhooks/{}/{}/messages/@original",
             self.config.application_id, interaction.token
         );
-        let response = self
-            .http
-            .patch(url)
-            .json(response)
-            .send()
-            .await
-            .map_err(|_| anyhow::anyhow!("Discord reply unavailable"))?;
-        anyhow::ensure!(response.status().is_success(), "Discord rejected the reply");
-        Ok(())
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            match self.http.patch(&url).json(response).send().await {
+                Ok(result) if result.status().is_success() => return Ok(()),
+                // An extremely fast backend can reach Discord before the relay's
+                // initial acknowledgement is visible. Updating one original
+                // message is also safe after an ambiguous network failure.
+                Ok(result)
+                    if result.status().as_u16() == 404
+                        || result.status().as_u16() == 429
+                        || result.status().is_server_error() => {}
+                Ok(_) => bail!("Discord rejected the reply"),
+                Err(_) => {}
+            }
+        }
+        bail!("Discord reply unavailable")
     }
 }
 
@@ -272,21 +283,25 @@ pub fn message(content: impl Into<String>) -> Value {
     json!({ "content": content.into(), "components": [], "allowed_mentions": { "parse": [] } })
 }
 
-/// User text remains literal and cannot introduce mentions, links, or Markdown.
+/// Plain labels/inline-code text, bounded in UTF-16 units like Discord limits.
+/// Callers wrap message titles in inline code; mentions are separately disabled.
 pub fn plain_title(title: &str, limit: usize) -> String {
-    title
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(limit)
-        .map(|c| {
-            if matches!(
-                c,
-                '*' | '_' | '~' | '`' | '[' | ']' | '<' | '>' | '@' | '\\' | '|'
-            ) {
-                ' '
-            } else {
-                c
-            }
-        })
-        .collect()
+    let mut result = String::new();
+    let mut units = 0;
+    for character in title.chars() {
+        let character = if character.is_control()
+            || character == '`'
+            || matches!(character, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        {
+            ' '
+        } else {
+            character
+        };
+        units += character.len_utf16();
+        if units > limit {
+            break;
+        }
+        result.push(character);
+    }
+    result
 }

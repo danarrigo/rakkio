@@ -223,7 +223,7 @@ async fn today_and_completion_never_cross_accounts_or_rebase_stale_versions(
         completed["data"]["content"]
             .as_str()
             .unwrap()
-            .contains("Completed: Edited in web")
+            .contains("Completed: `Edited in web`")
     );
     let (_, retry) = send(&router, &key, selected).await?;
     assert_eq!(retry, completed);
