@@ -52,7 +52,7 @@ pub struct DiscordCallback {
     pub iss: Option<String>,
 }
 
-#[utoipa::path(get,path="/api/v1/integrations/discord",responses((status=200,body=DiscordStatus),(status=401,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
+#[utoipa::path(get,operation_id="discord_status",path="/api/v1/integrations/discord",responses((status=200,body=DiscordStatus),(status=401,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
 pub async fn status(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -65,7 +65,7 @@ pub async fn status(
     }))
 }
 
-#[utoipa::path(post,path="/api/v1/integrations/discord/connect",request_body=DiscordConnectRequest,responses((status=200,body=DiscordAuthorization),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=503,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
+#[utoipa::path(post,operation_id="discord_connect",path="/api/v1/integrations/discord/connect",request_body=DiscordConnectRequest,responses((status=200,body=DiscordAuthorization),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=503,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
 pub async fn connect(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -165,7 +165,7 @@ pub async fn callback(
     .into_response())
 }
 
-#[utoipa::path(post,path="/api/v1/integrations/discord/disconnect",request_body=DiscordDisconnectRequest,responses((status=204),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
+#[utoipa::path(post,operation_id="discord_disconnect",path="/api/v1/integrations/discord/disconnect",request_body=DiscordDisconnectRequest,responses((status=204),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
 pub async fn disconnect(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
