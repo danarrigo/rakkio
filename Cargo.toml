@@ -11,6 +11,7 @@ version = "0.1.0"
 [workspace.dependencies]
 aes-gcm = "0.10.3"
 anyhow = "1.0.102"
+aws-lc-rs = "1.18.0"
 axum = { version = "0.8.9", features = ["macros", "multipart"] }
 base64 = "0.22.1"
 bytes = "1.11.1"

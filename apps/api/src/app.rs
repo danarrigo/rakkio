@@ -63,6 +63,7 @@ pub struct AppState {
     pub secure_cookies: bool,
     pub app_url: String,
     pub google_oauth: Option<GoogleOAuth>,
+    pub discord: Option<crate::discord::Discord>,
     pub file_storage: FileStorage,
     pub max_file_size_bytes: usize,
     pub max_user_file_storage_bytes: i64,
@@ -83,6 +84,9 @@ pub struct AppState {
         description = "Personal productivity API for rakkio"
     ),
     paths(
+        crate::discord_routes::status,
+        crate::discord_routes::connect,
+        crate::discord_routes::disconnect,
         saved_views::list,
         saved_views::create,
         saved_views::delete,
@@ -165,6 +169,11 @@ pub struct AppState {
         sync_routes::activity
     ),
     components(schemas(
+        crate::discord_routes::DiscordStatus,
+        crate::discord_routes::DiscordAuthorization,
+        crate::discord_routes::DiscordConnectRequest,
+        crate::discord_routes::DiscordDisconnectRequest,
+        crate::discord_store::DiscordConnection,
         crate::google_tasks_store::GoogleTasksStatus,
         crate::google_tasks_store::GoogleTaskRecovery,
         crate::google_tasks::GoogleTaskConflict,
@@ -254,6 +263,7 @@ pub struct AppState {
         (name = "system", description = "Health and readiness"),
         (name = "development", description = "Development-only session bootstrap"),
         (name = "settings", description = "User preferences"),
+        (name = "discord", description = "Optional private Discord task commands"),
         (name = "projects", description = "Outcome-oriented projects"),
         (name = "tasks", description = "Project tasks"),
         (name = "calendars", description = "Native and connected calendars"),
@@ -352,6 +362,11 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         secure_cookies: config.environment == Environment::Production,
         app_url: config.app_url.clone(),
         google_oauth,
+        discord: config
+            .discord
+            .clone()
+            .map(crate::discord::Discord::new)
+            .transpose()?,
         file_storage,
         max_file_size_bytes: config.max_file_size_bytes,
         max_user_file_storage_bytes: config.max_user_file_storage_bytes,
@@ -365,6 +380,19 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
     };
 
     let api = Router::new()
+        .route("/integrations/discord", get(crate::discord_routes::status))
+        .route(
+            "/integrations/discord/connect",
+            post(crate::discord_routes::connect),
+        )
+        .route(
+            "/integrations/discord/disconnect",
+            post(crate::discord_routes::disconnect),
+        )
+        .route(
+            "/auth/discord/callback",
+            get(crate::discord_routes::callback),
+        )
         .route("/operations/capability", get(operations::capability))
         .route("/operations", get(operations::snapshot))
         .route("/development/session", post(routes::development_session))
@@ -558,6 +586,10 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         );
 
     Ok(Router::new()
+        .route(
+            "/webhooks/discord",
+            post(crate::discord_routes::interactions),
+        )
         .route("/health", get(routes::health))
         .route("/ready", get(routes::ready))
         .route("/metrics", get(routes::metrics))

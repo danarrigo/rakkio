@@ -209,6 +209,7 @@ fn app_state(f: &Fixture) -> anyhow::Result<prosepect_api::app::AppState> {
         secure_cookies: false,
         app_url: "http://localhost".into(),
         google_oauth: None,
+        discord: None,
         file_storage: FileStorage::new(&ObjectStorageConfig::Local {
             root: std::env::temp_dir()
                 .join("prosepect-tasks-fixture")

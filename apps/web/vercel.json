@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "functions": {
+    "api/discord.ts": { "maxDuration": 120 }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -17,7 +20,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets/|favicon.svg).*)",
+      "source": "/((?!api/|assets/|favicon.svg).*)",
       "destination": "/index.html"
     }
   ]

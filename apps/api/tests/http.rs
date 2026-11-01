@@ -14,6 +14,8 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use utoipa::OpenApi;
 
+#[path = "http/discord.rs"]
+mod discord;
 #[path = "http/rebrand.rs"]
 mod rebrand;
 #[path = "http/security_regressions.rs"]
@@ -888,6 +890,7 @@ fn test_config() -> Config {
         invite_only: false,
         trust_proxy_headers: false,
         google_oauth: None,
+        discord: None,
         object_storage: ObjectStorageConfig::Local {
             root: std::env::temp_dir()
                 .join("prosepect-http-tests")

@@ -64,6 +64,9 @@ impl SyncDispatcher {
                 if let Err(error) = store.cleanup_task_delete_undos().await {
                     tracing::error!(error = ?error, "task deletion Undo cleanup failed");
                 }
+                if let Err(error) = store.cleanup_discord().await {
+                    tracing::error!(error = ?error, "Discord metadata cleanup failed");
+                }
             }
         });
         let dispatcher = Self {

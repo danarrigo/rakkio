@@ -60,6 +60,19 @@ impl RequestLimits {
         self.writes.check_key(&user_id.to_string())
     }
 
+    pub(crate) async fn discord_admission(&self) -> AppResult<OwnedSemaphorePermit> {
+        acquire(&self.authentication).await
+    }
+
+    pub(crate) async fn discord_command(&self, user: Uuid, write: bool) -> AppResult<impl Sized> {
+        if write {
+            self.check_write(user)?;
+        }
+        let account = self.account_request(user, write, false).await?;
+        let request = acquire(&self.requests).await?;
+        Ok((account, request))
+    }
+
     pub fn large_request(&self) -> AppResult<OwnedSemaphorePermit> {
         self.large.clone().try_acquire_owned().map_err(|_| busy())
     }

@@ -954,6 +954,22 @@ impl Store {
     }
 
     pub async fn create_task(&self, user_id: Uuid, request: CreateTaskRequest) -> AppResult<Task> {
+        let mut transaction = self.pool.begin().await?;
+        let task = self
+            .create_task_in(&mut transaction, user_id, request)
+            .await?;
+        transaction.commit().await?;
+        Ok(task)
+    }
+
+    // Integrations must commit their idempotency receipt with the normal task
+    // operation, not recreate its validation, recurrence, quota or sync rules.
+    pub(crate) async fn create_task_in(
+        &self,
+        mut transaction: &mut PgConnection,
+        user_id: Uuid,
+        request: CreateTaskRequest,
+    ) -> AppResult<Task> {
         validate_task_fields(
             &request.title,
             &request.description,
@@ -969,7 +985,6 @@ impl Store {
                 "a recurring task cannot be created as completed".to_owned(),
             ));
         }
-        let mut transaction = self.pool.begin().await?;
         Self::lock_task_graph(&mut transaction, user_id).await?;
         self.validate_task_relationships(
             &mut transaction,
@@ -1047,7 +1062,6 @@ impl Store {
         .await?;
         Self::ensure_labels(&mut transaction, user_id, &task.labels).await?;
         Self::sync_task_calendar_event(&mut transaction, user_id, &task).await?;
-        transaction.commit().await?;
 
         Ok(task)
     }
@@ -1126,6 +1140,30 @@ impl Store {
         request: UpdateTaskRequest,
         scope: Option<crate::task_recurrence::RecurrenceEditScope>,
     ) -> AppResult<Task> {
+        let mut transaction = self.pool.begin().await?;
+        let result = self
+            .update_task_scoped_in(&mut transaction, user_id, task_id, request, scope)
+            .await;
+        match result {
+            Ok(task) => {
+                transaction.commit().await?;
+                Ok(task)
+            }
+            Err(error) => {
+                transaction.rollback().await?;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) async fn update_task_scoped_in(
+        &self,
+        mut transaction: &mut PgConnection,
+        user_id: Uuid,
+        task_id: Uuid,
+        request: UpdateTaskRequest,
+        scope: Option<crate::task_recurrence::RecurrenceEditScope>,
+    ) -> AppResult<Task> {
         validate_task_fields(
             &request.title,
             &request.description,
@@ -1146,7 +1184,6 @@ impl Store {
                 "a task cannot be its own parent".to_owned(),
             ));
         }
-        let mut transaction = self.pool.begin().await?;
         let result: AppResult<Task> = async {
             Self::lock_task_graph(&mut transaction, user_id).await?;
             self.validate_task_relationships(
@@ -1275,16 +1312,7 @@ impl Store {
             }
         }
         .await;
-        match result {
-            Ok(task) => {
-                transaction.commit().await?;
-                Ok(task)
-            }
-            Err(error) => {
-                transaction.rollback().await?;
-                Err(error)
-            }
-        }
+        result
     }
 
     pub async fn reorder_tasks(
