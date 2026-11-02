@@ -436,8 +436,9 @@ mod tests {
                 .unwrap(),
             b"123:test-secret"
         );
-        let form: std::collections::HashMap<String, String> =
-            serde_urlencoded::from_bytes(request.body().unwrap().as_bytes().unwrap()).unwrap();
+        let body = std::str::from_utf8(request.body().unwrap().as_bytes().unwrap()).unwrap();
+        let decoded = Url::parse(&format!("https://example.test/?{body}")).unwrap();
+        let form: std::collections::HashMap<String, String> = decoded.query_pairs().into_owned().collect();
         assert_eq!(form.get("code_verifier").unwrap(), "test-verifier");
         assert_eq!(form.get("code").unwrap(), "test-code");
         assert_eq!(form.get("grant_type").unwrap(), "authorization_code");
