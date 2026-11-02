@@ -138,6 +138,9 @@ async function forward(
   token: string,
   fetcher: typeof fetch,
 ): Promise<void> {
+  // Two 40s fetches + at most 20s of cooldown + a 10s notice stay below
+  // the function's 120s budget. This is a runtime budget, not a provider quota.
+  let cooldownBudgetMs = 20_000
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const result = await fetcher(backend, {
@@ -154,7 +157,21 @@ async function forward(
       })
       await result.body?.cancel()
       if (result.status === 204) return
-      if (result.status < 500 && result.status !== 429) break
+      if (result.status === 429) {
+        const providerLimited = result.headers.get('x-rakkio-discord-provider-rate-limit') === '1'
+        // The backend rounds its validated hint up to whole seconds.
+        const hint = result.headers.get('retry-after')
+        const delayMs = hint !== null && /^\d+$/.test(hint) ? Number(hint) * 1000 : NaN
+        if (!Number.isFinite(delayMs) || delayMs > cooldownBudgetMs) {
+          // Do not PATCH the same exhausted provider as an early fallback.
+          if (providerLimited) return
+          break
+        }
+        cooldownBudgetMs -= delayMs
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+        continue
+      }
+      if (result.status < 500) break
     } catch {
       // Never log request bodies, signed headers, interaction tokens, or URLs.
     }
