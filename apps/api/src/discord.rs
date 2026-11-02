@@ -36,6 +36,16 @@ pub struct Discord {
     http: reqwest::Client,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "Discord {stage} rate limited the request (HTTP 429, scope={scope}, retry_after_seconds={retry_after_seconds:?})"
+)]
+pub(crate) struct DiscordRateLimit {
+    pub(crate) stage: &'static str,
+    pub(crate) scope: &'static str,
+    pub(crate) retry_after_seconds: Option<u64>,
+}
+
 #[derive(Deserialize)]
 pub struct DiscordIdentity {
     pub id: String,
@@ -187,10 +197,12 @@ impl Discord {
     fn token_request(&self, code: &str, verifier: &str) -> reqwest::RequestBuilder {
         self.http
             .post("https://discord.com/api/v10/oauth2/token")
+            .basic_auth(
+                &self.config.application_id,
+                Some(&self.config.client_secret),
+            )
             .form(&[
                 ("grant_type", "authorization_code"),
-                ("client_id", self.config.application_id.as_str()),
-                ("client_secret", self.config.client_secret.as_str()),
                 ("code", code),
                 ("redirect_uri", self.config.redirect_uri.as_str()),
                 ("code_verifier", verifier),
@@ -205,9 +217,7 @@ impl Discord {
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("Discord authorization unavailable"))?;
-        let token = bounded_json(response)
-            .await
-            .map_err(|error| anyhow::anyhow!("Discord token exchange: {error}"))?;
+        let token = bounded_json(response, "token exchange").await?;
         anyhow::ensure!(
             token["token_type"]
                 .as_str()
@@ -228,9 +238,7 @@ impl Discord {
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("Discord identity unavailable"))?;
-        let identity = bounded_json(response)
-            .await
-            .map_err(|error| anyhow::anyhow!("Discord identity lookup: {error}"))?;
+        let identity = bounded_json(response, "identity lookup").await?;
         let user: DiscordIdentity = serde_json::from_value(identity)
             .map_err(|_| anyhow::anyhow!("invalid Discord identity"))?;
         anyhow::ensure!(
@@ -263,13 +271,16 @@ impl Discord {
             }
             match self.http.patch(&url).json(response).send().await {
                 Ok(result) if result.status().is_success() => return Ok(()),
+                // Never retry a known exhausted bucket on the fixed 500ms
+                // transport-recovery delay. Preserve its safe cooldown context.
+                Ok(result) if result.status() == reqwest::StatusCode::TOO_MANY_REQUESTS => {
+                    return bounded_json(result, "reply").await.map(|_| ());
+                }
                 // An extremely fast backend can reach Discord before the relay's
                 // initial acknowledgement is visible. Updating one original
                 // message is also safe after an ambiguous network failure.
                 Ok(result)
-                    if result.status().as_u16() == 404
-                        || result.status().as_u16() == 429
-                        || result.status().is_server_error() => {}
+                    if result.status().as_u16() == 404 || result.status().is_server_error() => {}
                 Ok(_) => bail!("Discord rejected the reply"),
                 Err(_) => {}
             }
@@ -278,21 +289,95 @@ impl Discord {
     }
 }
 
-async fn bounded_json(mut response: reqwest::Response) -> anyhow::Result<Value> {
+fn cooldown_seconds(value: f64) -> Option<u64> {
+    // This is a validation bound, not a provider rate limit. Longer/invalid
+    // hints stay unknown: never shorten a cooldown and never automatically retry.
+    (value.is_finite() && (0.0..=86_400.0).contains(&value)).then_some(value.ceil() as u64)
+}
+
+async fn bounded_json(
+    mut response: reqwest::Response,
+    stage: &'static str,
+) -> anyhow::Result<Value> {
     let status = response.status();
-    let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| anyhow::anyhow!("Discord response interrupted"))?
+    let header_delay = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            value.parse::<f64>().ok().or_else(|| {
+                chrono::DateTime::parse_from_rfc2822(value)
+                    .ok()
+                    .map(|date| {
+                        (date.with_timezone(&Utc) - Utc::now())
+                            .num_milliseconds()
+                            .max(0) as f64
+                            / 1000.0
+                    })
+            })
+        })
+        .filter(|value| value.is_finite() && *value >= 0.0);
+    let scope = match response
+        .headers()
+        .get("x-ratelimit-scope")
+        .and_then(|value| value.to_str().ok())
     {
-        anyhow::ensure!(
-            body.len().saturating_add(chunk.len()) <= MAX_BODY,
-            "Discord response too large"
-        );
+        Some("global") => "global",
+        Some("shared") => "shared",
+        Some("user") => "user",
+        _ => "unavailable",
+    };
+    let header_global = response
+        .headers()
+        .get("x-ratelimit-global")
+        .is_some_and(|value| value == "true");
+    let limited = status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+    let mut body = Vec::new();
+    loop {
+        let chunk = match response.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(_) if limited => {
+                body.clear();
+                break;
+            }
+            Err(_) => bail!("Discord response interrupted"),
+        };
+        if body.len().saturating_add(chunk.len()) > MAX_BODY {
+            if limited {
+                body.clear();
+                break;
+            }
+            bail!("Discord response too large");
+        }
         body.extend_from_slice(&chunk);
     }
     let parsed = serde_json::from_slice::<Value>(&body);
+    if limited {
+        let value = parsed.as_ref().ok();
+        let json_delay = value
+            .and_then(|value| value["retry_after"].as_f64())
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        let delay = match (header_delay, json_delay) {
+            (Some(header), Some(json)) => Some(header.max(json)),
+            (header, json) => header.or(json),
+        }
+        .and_then(cooldown_seconds);
+        let global = header_global
+            || value
+                .and_then(|value| value["global"].as_bool())
+                .unwrap_or(false);
+        return Err(DiscordRateLimit {
+            stage,
+            scope: if scope == "unavailable" && global {
+                "global"
+            } else {
+                scope
+            },
+            retry_after_seconds: delay,
+        }
+        .into());
+    }
     if !status.is_success() {
         // Only standard OAuth categories are safe to report. Never include
         // arbitrary provider text, descriptions, URLs, codes, or token fields.
@@ -316,7 +401,7 @@ async fn bounded_json(mut response: reqwest::Response) -> anyhow::Result<Value> 
             })
             .unwrap_or("unavailable");
         bail!(
-            "Discord rejected the request (HTTP {}, OAuth category: {category})",
+            "Discord {stage} rejected the request (HTTP {}, OAuth category: {category})",
             status.as_u16()
         );
     }
@@ -367,7 +452,10 @@ mod tests {
     async fn provider_rejections_report_safe_status_and_oauth_category() {
         let response: reqwest::Response = http::Response::builder().status(400)
             .body(r#"{"error":"invalid_grant","error_description":"private-provider-detail","access_token":"private-token-value"}"#.to_owned()).unwrap().into();
-        let error = bounded_json(response).await.unwrap_err().to_string();
+        let error = bounded_json(response, "test")
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("HTTP 400"), "{error}");
         assert!(error.contains("invalid_grant"), "{error}");
         assert!(!error.contains("private-provider-detail"));
@@ -383,7 +471,10 @@ mod tests {
             )
             .unwrap()
             .into();
-        let error = bounded_json(response).await.unwrap_err().to_string();
+        let error = bounded_json(response, "test")
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("HTTP 403"), "{error}");
         assert!(!error.contains("private-unrecognized-value"));
         assert!(!error.contains("private-message"));
@@ -396,7 +487,7 @@ mod tests {
             .body("<html>private-block-page</html>".to_owned())
             .unwrap()
             .into();
-        let error = bounded_json(html).await.unwrap_err().to_string();
+        let error = bounded_json(html, "test").await.unwrap_err().to_string();
         assert!(error.contains("HTTP 403"));
         assert!(!error.contains("private-block-page"));
         let large: reqwest::Response = http::Response::builder()
@@ -405,7 +496,7 @@ mod tests {
             .unwrap()
             .into();
         assert_eq!(
-            bounded_json(large).await.unwrap_err().to_string(),
+            bounded_json(large, "test").await.unwrap_err().to_string(),
             "Discord response too large"
         );
     }
@@ -443,6 +534,10 @@ mod tests {
         assert_eq!(form.get("code_verifier").unwrap(), "test-verifier");
         assert_eq!(form.get("code").unwrap(), "test-code");
         assert_eq!(form.get("grant_type").unwrap(), "authorization_code");
+        assert_eq!(
+            form.get("redirect_uri").unwrap(),
+            &discord.config.redirect_uri
+        );
         assert!(!form.contains_key("client_secret"));
         assert!(!form.contains_key("client_id"));
     }
@@ -455,10 +550,75 @@ mod tests {
             .body(r#"{"retry_after":8.1,"global":true,"message":"private-detail"}"#.to_owned())
             .unwrap()
             .into();
-        let error = bounded_json(response).await.unwrap_err().to_string();
+        let error = bounded_json(response, "token exchange")
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("retry_after_seconds=Some(9)"), "{error}");
         assert!(error.contains("scope=global"), "{error}");
         assert!(!error.contains("private-detail"));
+    }
+
+    #[tokio::test]
+    async fn rate_hints_ignore_untrusted_values_without_shortening_long_waits() {
+        for (header, body) in [
+            (
+                "private-header",
+                r#"{"retry_after":-1,"global":false,"message":"private-message"}"#,
+            ),
+            ("90000", r#"{"retry_after":1}"#),
+        ] {
+            let response: reqwest::Response = http::Response::builder()
+                .status(429)
+                .header("retry-after", header)
+                .header("x-ratelimit-scope", "private-scope")
+                .body(body.to_owned())
+                .unwrap()
+                .into();
+            let error = bounded_json(response, "token exchange").await.unwrap_err();
+            let rate = error.downcast_ref::<DiscordRateLimit>().unwrap();
+            assert_eq!(rate.retry_after_seconds, None);
+            assert_eq!(rate.scope, "unavailable");
+            let logged = format!("{error:?}");
+            assert!(!logged.contains("private-"));
+            assert!(!logged.contains("90000"));
+        }
+    }
+
+    #[tokio::test]
+    async fn rate_limit_survives_html_or_oversized_bodies_and_http_date_hints() {
+        for body in [
+            "<html>private-block-page</html>".to_owned(),
+            "x".repeat(MAX_BODY + 1),
+        ] {
+            let response: reqwest::Response = http::Response::builder()
+                .status(429)
+                .header("retry-after", "5")
+                .header("x-ratelimit-scope", "shared")
+                .body(body)
+                .unwrap()
+                .into();
+            let error = bounded_json(response, "token exchange").await.unwrap_err();
+            let rate = error.downcast_ref::<DiscordRateLimit>().unwrap();
+            assert_eq!(rate.retry_after_seconds, Some(5));
+            assert_eq!(rate.scope, "shared");
+            assert!(!error.to_string().contains("private-block-page"));
+        }
+        let date = (Utc::now() + chrono::Duration::hours(1))
+            .format("%a, %d %b %Y %T GMT")
+            .to_string();
+        let response: reqwest::Response = http::Response::builder()
+            .status(429)
+            .header("retry-after", date)
+            .body(String::new())
+            .unwrap()
+            .into();
+        let error = bounded_json(response, "identity lookup").await.unwrap_err();
+        let rate = error.downcast_ref::<DiscordRateLimit>().unwrap();
+        assert!(
+            rate.retry_after_seconds
+                .is_some_and(|seconds| seconds > 0 && seconds <= 3600)
+        );
     }
 
     #[test]
