@@ -329,6 +329,32 @@ mod tests {
         assert_eq!(plain_title("a\n`\u{202e}b", 20), "a   b");
     }
 
+    #[tokio::test]
+    async fn provider_rejections_report_safe_status_and_oauth_category() {
+        let response: reqwest::Response = http::Response::builder().status(400)
+            .body(r#"{"error":"invalid_grant","error_description":"private-provider-detail","access_token":"private-token-value"}"#.to_owned()).unwrap().into();
+        let error = bounded_json(response).await.unwrap_err().to_string();
+        assert!(error.contains("HTTP 400"), "{error}");
+        assert!(error.contains("invalid_grant"), "{error}");
+        assert!(!error.contains("private-provider-detail"));
+        assert!(!error.contains("private-token-value"));
+    }
+
+    #[tokio::test]
+    async fn unknown_error_payloads_are_never_logged() {
+        let response: reqwest::Response = http::Response::builder()
+            .status(403)
+            .body(
+                r#"{"error":"private-unrecognized-value","message":"private-message"}"#.to_owned(),
+            )
+            .unwrap()
+            .into();
+        let error = bounded_json(response).await.unwrap_err().to_string();
+        assert!(error.contains("HTTP 403"), "{error}");
+        assert!(!error.contains("private-unrecognized-value"));
+        assert!(!error.contains("private-message"));
+    }
+
     #[test]
     fn hex_keys_fail_closed_on_bad_encodings() {
         assert!(decode_hex("a").is_err());
