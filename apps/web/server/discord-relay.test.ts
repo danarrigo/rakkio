@@ -139,6 +139,101 @@ describe('Discord fast acknowledgement', () => {
     expect(fetcher.mock.calls[0]?.[1]?.headers).toEqual(fetcher.mock.calls[1]?.[1]?.headers)
   })
 
+  it('waits for a provider cooldown before replaying the same receipt', async () => {
+    vi.useFakeTimers()
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 429,
+          headers: {
+            'retry-after': '1',
+            'x-rakkio-discord-provider-rate-limit': '1',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls[0]?.[1]?.body).toEqual(fetcher.mock.calls[1]?.[1]?.body)
+  })
+
+  it('does not retry or send another provider message before a long or unknown cooldown', async () => {
+    for (const delay of [null, '60', '-1', 'NaN']) {
+      const headers: Record<string, string> = { 'x-rakkio-discord-provider-rate-limit': '1' }
+      if (delay !== null) headers['retry-after'] = delay
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(null, { status: 429, headers }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      const work: Promise<void>[] = []
+      await receiveDiscord(
+        request(JSON.stringify(payload)),
+        config,
+        (pending) => work.push(pending),
+        fetcher,
+      )
+      await Promise.all(work)
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('caps total cooldown time and does not fall back into an exhausted provider', async () => {
+    vi.useFakeTimers()
+    const limited = () =>
+      new Response(null, {
+        status: 429,
+        headers: {
+          'retry-after': '15',
+          'x-rakkio-discord-provider-rate-limit': '1',
+        },
+      })
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(limited())
+      .mockResolvedValueOnce(limited())
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await vi.advanceTimersByTimeAsync(15_000)
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not immediately replay an unknown backend cooldown and keeps the uncertain notice', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 429 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls[1]?.[1]?.method).toBe('PATCH')
+    expect(String(fetcher.mock.calls[1]?.[1]?.body)).toContain('may already have succeeded')
+  })
+
   it('reports an uncertain outcome privately after delivery failure', async () => {
     const fetcher = vi
       .fn<typeof fetch>()

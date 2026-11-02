@@ -155,7 +155,7 @@ pub async fn callback(
         .ok_or_else(|| AppError::Validation("Missing Discord authorization code".into()))?;
     let identity = match discord.identity(&code, &attempt.pkce_verifier).await {
         Ok(identity) => identity,
-        Err(error) => return Ok(identity_failure(error)),
+        Err(error) => return Ok(provider_failure(error)),
     };
     state.store.finish_discord_link(attempt, identity).await?;
     Ok(Redirect::to(&format!(
@@ -165,21 +165,36 @@ pub async fn callback(
     .into_response())
 }
 
-fn identity_failure(error: anyhow::Error) -> Response {
+fn provider_failure(error: anyhow::Error) -> Response {
     let Some(rate) = error.downcast_ref::<discord::DiscordRateLimit>() else {
         return AppError::Integration(error).into_response();
     };
-    tracing::warn!(error = %rate, "Discord OAuth rate limited");
+    tracing::warn!(error = %rate, "Discord integration rate limited");
     let wait = rate
         .retry_after_seconds
         .map(|seconds| format!("Wait {seconds} seconds, then "))
         .unwrap_or_else(|| "Try again later: ".into());
-    let mut response = (StatusCode::TOO_MANY_REQUESTS,Json(ErrorResponse {
-        error:ErrorBody {
-            code:"integration_rate_limited",
-            message:format!("Discord is temporarily rate limiting account linking. {wait}start a fresh connection from rakkio Settings. Do not refresh this callback page."),
-        }
-    })).into_response();
+    let message = if rate.stage == "reply" {
+        "Discord is temporarily rate limiting command delivery. The command may already have succeeded. Check rakkio before submitting it again.".to_owned()
+    } else {
+        format!(
+            "Discord is temporarily rate limiting account linking. {wait}start a fresh connection from rakkio Settings. Do not refresh this callback page."
+        )
+    };
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(ErrorResponse {
+            error: ErrorBody {
+                code: "integration_rate_limited",
+                message,
+            },
+        }),
+    )
+        .into_response();
+    response.headers_mut().insert(
+        "x-rakkio-discord-provider-rate-limit",
+        axum::http::HeaderValue::from_static("1"),
+    );
     if let Some(seconds) = rate.retry_after_seconds {
         // A validated integer contains only header-safe ASCII digits.
         if let Ok(value) = seconds.to_string().parse() {
@@ -283,10 +298,9 @@ pub async fn interactions(State(state): State<AppState>, request: Request) -> Ap
     {
         // Only a UI/transport choice; never an authentication credential. PATCH
         // updates the same original message, so retrying delivery is idempotent.
-        discord
-            .reply(&interaction, &response)
-            .await
-            .map_err(AppError::Integration)?;
+        if let Err(error) = discord.reply(&interaction, &response).await {
+            return Ok(provider_failure(error));
+        }
         Ok(StatusCode::NO_CONTENT.into_response())
     } else {
         // Always-on self-hosters can use this endpoint directly, without Vercel.
@@ -303,7 +317,7 @@ mod tests {
     #[tokio::test]
     async fn identity_rate_limit_is_actionable_without_replaying_the_callback() {
         for delay in [Some(9), None] {
-            let response = identity_failure(
+            let response = provider_failure(
                 discord::DiscordRateLimit {
                     stage: "token exchange",
                     scope: "global",
@@ -336,8 +350,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delivery_rate_limit_preserves_cooldown_without_encouraging_duplicate_tasks() {
+        let response = provider_failure(
+            discord::DiscordRateLimit {
+                stage: "reply",
+                scope: "shared",
+                retry_after_seconds: Some(5),
+            }
+            .into(),
+        );
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            response.headers()["x-rakkio-discord-provider-rate-limit"],
+            "1"
+        );
+        assert_eq!(response.headers()[header::RETRY_AFTER], "5");
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        let message = body["error"]["message"].as_str().unwrap();
+        assert!(message.contains("may already have succeeded"));
+        assert!(!message.contains("fresh connection"));
+    }
+
+    #[tokio::test]
     async fn other_identity_failures_keep_generic_public_response() {
-        let response = identity_failure(anyhow::anyhow!("test-provider-detail"));
+        let response = provider_failure(anyhow::anyhow!("test-provider-detail"));
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
         assert!(!response.headers().contains_key(header::RETRY_AFTER));
         let bytes = axum::body::to_bytes(response.into_body(), 4096)
