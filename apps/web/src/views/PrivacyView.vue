@@ -162,7 +162,8 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         </li>
         <li>
           with infrastructure providers that host or deliver the service: Vercel for the web
-          application, Render for the API, Neon for PostgreSQL, and Cloudflare R2 for attachments;
+          application and Discord command relay, Render for the API, Neon for PostgreSQL, and
+          Cloudflare R2 for attachments;
         </li>
         <li>when you direct rakkio to place information on a shared Google calendar;</li>
         <li>

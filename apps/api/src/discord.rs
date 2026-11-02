@@ -58,7 +58,6 @@ pub struct Interaction {
     pub application_id: String,
     #[serde(rename = "type")]
     pub kind: u8,
-    pub token: String,
     pub user: Option<Actor>,
     pub member: Option<Member>,
     pub data: Option<Value>,
@@ -248,44 +247,6 @@ impl Discord {
         // Access/refresh tokens are discarded, never stored. Commands use signed
         // Discord identities, not ongoing access to the user's Discord account.
         Ok(user)
-    }
-
-    pub async fn reply(&self, interaction: &Interaction, response: &Value) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            snowflake(&interaction.application_id)
-                && !interaction.token.is_empty()
-                && interaction.token.len() <= 4096
-                && interaction
-                    .token
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')),
-            "invalid interaction token"
-        );
-        let url = format!(
-            "https://discord.com/api/v10/webhooks/{}/{}/messages/@original",
-            self.config.application_id, interaction.token
-        );
-        for attempt in 0..3 {
-            if attempt > 0 {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-            match self.http.patch(&url).json(response).send().await {
-                Ok(result) if result.status().is_success() => return Ok(()),
-                // Never retry a known exhausted bucket on the fixed 500ms
-                // transport-recovery delay. Preserve its safe cooldown context.
-                Ok(result) if result.status() == reqwest::StatusCode::TOO_MANY_REQUESTS => {
-                    return bounded_json(result, "reply").await.map(|_| ());
-                }
-                // An extremely fast backend can reach Discord before the relay's
-                // initial acknowledgement is visible. Updating one original
-                // message is also safe after an ambiguous network failure.
-                Ok(result)
-                    if result.status().as_u16() == 404 || result.status().is_server_error() => {}
-                Ok(_) => bail!("Discord rejected the reply"),
-                Err(_) => {}
-            }
-        }
-        bail!("Discord reply unavailable")
     }
 }
 

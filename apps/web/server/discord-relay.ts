@@ -83,7 +83,7 @@ export async function receiveDiscord(
     return new Response(null, { status: 400, headers })
 
   // Forwarding retries keep the original signed interaction ID. The backend
-  // commits its receipt and task changes atomically before replying to Discord.
+  // commits its receipt and task changes atomically before returning reply data.
   defer(
     forward(
       backend.href,
@@ -129,6 +129,130 @@ async function boundedBody(request: Request): Promise<Uint8Array> {
   }
 }
 
+interface Reply {
+  content: string
+  components: unknown[]
+  allowed_mentions: { parse: never[] }
+}
+
+const UNCERTAIN_REPLY: Reply = {
+  content:
+    'Could not confirm this command. Check rakkio before submitting it again; it may already have succeeded.',
+  components: [],
+  allowed_mentions: { parse: [] },
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+async function responseJson(response: Response, limit: number): Promise<unknown> {
+  const reader = response.body?.getReader()
+  if (!reader) return null
+  const chunks: Uint8Array[] = []
+  let length = 0
+  let ended = false
+  try {
+    while (true) {
+      const part = await reader.read()
+      if (part.done) {
+        ended = true
+        break
+      }
+      length += part.value.byteLength
+      if (length > limit) return null
+      chunks.push(part.value)
+    }
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)))
+  } catch {
+    return null
+  } finally {
+    if (!ended) await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+}
+
+function cooldown(response: Response, body?: unknown): number | undefined {
+  const header = response.headers.get('retry-after')?.trim() ?? ''
+  let seconds: number | undefined
+  if (/^\d+(?:\.\d+)?$/.test(header)) seconds = Number(header)
+  else if (/^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(header))
+    seconds = Math.max(0, (Date.parse(header) - Date.now()) / 1000)
+  const candidates = [seconds, record(body) ? body.retry_after : undefined].filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0,
+  )
+  if (!candidates.length) return undefined
+  // Validate only after choosing the later hint: never shorten a long cooldown.
+  const delay = Math.ceil(Math.max(...candidates))
+  return delay <= 86_400 ? delay : undefined
+}
+
+async function waitForCooldown(
+  seconds: number | undefined,
+  budget: { ms: number },
+): Promise<boolean> {
+  if (seconds === undefined || seconds * 1000 > budget.ms) return false
+  budget.ms -= seconds * 1000
+  await new Promise<void>((resolve) => setTimeout(resolve, seconds * 1000))
+  return true
+}
+
+async function deliver(
+  reply: Reply,
+  application: string,
+  token: string,
+  fetcher: typeof fetch,
+  budget: { ms: number },
+  attempts: number,
+): Promise<'done' | 'stopped' | 'failed'> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const result = await fetcher(
+        `${DISCORD}/webhooks/${application}/${token}/messages/@original`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'DiscordBot (https://github.com/danarrigo/rakkio, 0.1.0)',
+          },
+          body: JSON.stringify(reply),
+          redirect: 'error',
+          signal: AbortSignal.timeout(10000),
+        },
+      )
+      if (result.status === 429) {
+        const body = await responseJson(result, BODY_LIMIT)
+        const delay = cooldown(result, body)
+        const hint = result.headers.get('x-ratelimit-scope')
+        const scope =
+          hint === 'global' || hint === 'user' || hint === 'shared'
+            ? hint
+            : result.headers.get('x-ratelimit-global') === 'true' ||
+                (record(body) && body.global === true)
+              ? 'global'
+              : 'unavailable'
+        // Only fixed labels, status and validated hints. Never stringify a
+        // fetch error, body, task content or a token-bearing webhook URL.
+        console.warn('Discord relay delivery rate limited', {
+          status: 429,
+          scope,
+          retry_after_seconds: delay ?? null,
+        })
+        if (attempt + 1 < attempts && (await waitForCooldown(delay, budget))) continue
+        return 'stopped'
+      }
+      await result.body?.cancel()
+      if (result.ok) return 'done'
+      console.warn('Discord relay delivery rejected', { status: result.status })
+      return [401, 403, 404].includes(result.status) ? 'stopped' : 'failed'
+    } catch {
+      console.warn('Discord relay delivery unavailable')
+      return 'failed'
+    }
+  }
+  return 'failed'
+}
+
 async function forward(
   backend: string,
   raw: Uint8Array,
@@ -138,9 +262,10 @@ async function forward(
   token: string,
   fetcher: typeof fetch,
 ): Promise<void> {
-  // Two 40s fetches + at most 20s of cooldown + a 10s notice stay below
-  // the function's 120s budget. This is a runtime budget, not a provider quota.
-  let cooldownBudgetMs = 20_000
+  // Two 40s backend calls + two 10s delivery attempts + one 10s notice +
+  // at most 5s cooldown leave room for the 1s reader within the 120s budget.
+  const budget = { ms: 5000 }
+  let reply: Reply | null = null
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const result = await fetcher(backend, {
@@ -155,45 +280,50 @@ async function forward(
         redirect: 'error',
         signal: AbortSignal.timeout(40000),
       })
+      if (result.status === 200) {
+        const value = await responseJson(result, 8192)
+        if (
+          record(value) &&
+          typeof value.content === 'string' &&
+          value.content.length > 0 &&
+          value.content.length <= 2000 &&
+          Array.isArray(value.components)
+        ) {
+          // Only the supported message fields; mentions remain disabled even if
+          // a future backend accidentally sends a broader allowed_mentions.
+          reply = {
+            content: value.content,
+            components: value.components,
+            allowed_mentions: { parse: [] },
+          }
+        } else console.warn('Discord relay backend reply invalid')
+        break
+      }
       await result.body?.cancel()
-      if (result.status === 204) return
+      if (result.status === 204) return // Older API already delivered: rolling-deploy compatibility.
       if (result.status === 429) {
         const providerLimited = result.headers.get('x-rakkio-discord-provider-rate-limit') === '1'
-        // The backend rounds its validated hint up to whole seconds.
-        const hint = result.headers.get('retry-after')
-        const delayMs = hint !== null && /^\d+$/.test(hint) ? Number(hint) * 1000 : NaN
-        if (!Number.isFinite(delayMs) || delayMs > cooldownBudgetMs) {
-          // Do not PATCH the same exhausted provider as an early fallback.
-          if (providerLimited) return
-          break
-        }
-        cooldownBudgetMs -= delayMs
-        await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
-        continue
+        if (await waitForCooldown(cooldown(result), budget)) continue
+        if (providerLimited) return // Legacy API: do not issue an early fallback.
+        break
       }
-      if (result.status < 500) break
+      if (result.status < 500) {
+        console.warn('Discord relay backend rejected', { status: result.status })
+        break
+      }
     } catch {
-      // Never log request bodies, signed headers, interaction tokens, or URLs.
+      // Same signed bytes/ID are retried; never rerun a task after receiving its result.
+      console.warn('Discord relay backend unavailable')
     }
   }
-  try {
-    const result = await fetcher(`${DISCORD}/webhooks/${application}/${token}/messages/@original`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'DiscordBot (https://github.com/danarrigo/rakkio, 0.1.0)',
-      },
-      body: JSON.stringify({
-        content:
-          'Could not confirm this command. Check rakkio before submitting it again; it may already have succeeded.',
-        components: [],
-        allowed_mentions: { parse: [] },
-      }),
-      redirect: 'error',
-      signal: AbortSignal.timeout(10000),
-    })
-    await result.body?.cancel()
-  } catch {
-    // The platform may be unavailable too; no success is invented.
-  }
+  const outcome = await deliver(
+    reply ?? UNCERTAIN_REPLY,
+    application,
+    token,
+    fetcher,
+    budget,
+    reply ? 2 : 1,
+  )
+  if (reply && outcome === 'failed')
+    await deliver(UNCERTAIN_REPLY, application, token, fetcher, budget, 1)
 }
