@@ -158,6 +158,9 @@ describe('Discord fast acknowledgement', () => {
     expect(update?.[0]).toBe(
       `https://discord.com/api/v10/webhooks/${config.applicationId}/${payload.token}/messages/@original`,
     )
+    expect(update?.[1]?.headers).toMatchObject({
+      'User-Agent': 'DiscordBot (https://github.com/danarrigo/rakkio, 0.1.0)',
+    })
     const message = JSON.parse(String(update?.[1]?.body))
     expect(message.content).toContain('may already have succeeded')
     expect(message.allowed_mentions).toEqual({ parse: [] })

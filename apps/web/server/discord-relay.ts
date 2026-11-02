@@ -162,7 +162,10 @@ async function forward(
   try {
     const result = await fetcher(`${DISCORD}/webhooks/${application}/${token}/messages/@original`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'DiscordBot (https://github.com/danarrigo/rakkio, 0.1.0)',
+      },
       body: JSON.stringify({
         content:
           'Could not confirm this command. Check rakkio before submitting it again; it may already have succeeded.',

@@ -22,9 +22,11 @@ class RegistrationTests(unittest.TestCase):
         registration.register("123456789012345678", "synthetic-secret", opener)
         token_request = opener.open.call_args_list[0].args[0]
         self.assertEqual(token_request.full_url, "https://discord.com/api/v10/oauth2/token")
+        self.assertEqual(token_request.get_header("User-agent"), registration.USER_AGENT)
         self.assertIn(b"scope=applications.commands.update", token_request.data)
         command_request = opener.open.call_args_list[1].args[0]
         self.assertEqual(command_request.method, "PUT")
+        self.assertEqual(command_request.get_header("User-agent"), registration.USER_AGENT)
         self.assertEqual(command_request.full_url, "https://discord.com/api/v10/applications/123456789012345678/commands")
         commands = json.loads(command_request.data)
         self.assertEqual([command["name"] for command in commands], ["add", "today", "done"])

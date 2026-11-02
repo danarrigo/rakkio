@@ -134,6 +134,7 @@ impl Discord {
             config,
             key,
             http: reqwest::Client::builder()
+                .user_agent("DiscordBot (https://github.com/danarrigo/rakkio, 0.1.0)")
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(5))
                 .timeout(Duration::from_secs(12))

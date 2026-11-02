@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 
 API = "https://discord.com/api/v10"
+USER_AGENT = "DiscordBot (https://github.com/danarrigo/rakkio, 0.1.0)"
 COMMANDS = [
     {
         "name": "add", "description": "Add a task to your rakkio Inbox", "type": 1,
@@ -38,7 +39,7 @@ def exchange(application_id, client_secret, opener):
     credentials = base64.b64encode(f"{application_id}:{client_secret}".encode()).decode()
     request = urllib.request.Request(
         API + "/oauth2/token", data=body, method="POST",
-        headers={"Authorization": "Basic " + credentials, "Content-Type": "application/x-www-form-urlencoded"},
+        headers={"Authorization": "Basic " + credentials, "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT},
     )
     with opener.open(request, timeout=20) as response:
         data = response.read(65537)
@@ -59,7 +60,7 @@ def register(application_id, client_secret, opener):
     token = exchange(application_id, client_secret, opener)
     request = urllib.request.Request(
         f"{API}/applications/{application_id}/commands", data=json.dumps(COMMANDS).encode(), method="PUT",
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json", "User-Agent": USER_AGENT},
     )
     with opener.open(request, timeout=20) as response:
         if response.status != 200:
