@@ -53,6 +53,15 @@ async fn send(
     key: &Ed25519KeyPair,
     payload: Value,
 ) -> anyhow::Result<(StatusCode, Value)> {
+    send_transport(router, key, payload, false).await
+}
+
+async fn send_transport(
+    router: &axum::Router,
+    key: &Ed25519KeyPair,
+    payload: Value,
+    deferred: bool,
+) -> anyhow::Result<(StatusCode, Value)> {
     let raw = serde_json::to_vec(&payload)?;
     let timestamp = Utc::now().timestamp().to_string();
     let signed = [timestamp.as_bytes(), raw.as_slice()].concat();
@@ -65,12 +74,55 @@ async fn send(
                 .header("x-signature-timestamp", timestamp)
                 .header("x-signature-ed25519", hex(key.sign(&signed).as_ref()))
                 .header("content-type", "application/json")
+                .header(
+                    "x-rakkio-discord-deferred",
+                    if deferred { "1" } else { "0" },
+                )
                 .body(Body::from(raw))?,
         )
         .await?;
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 65536).await?;
     Ok((status, serde_json::from_slice(&bytes)?))
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn relay_gets_committed_reply_without_provider_io_or_duplicate_writes(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, store, key, _) = fixture(&pool).await?;
+    link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    let payload = command(
+        99,
+        "111111111111111111",
+        "add",
+        json!([{"name":"title","value":"Relay task"}]),
+    );
+    let (status, first) = send_transport(&router, &key, payload.clone(), true).await?;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert!(first["content"].as_str().unwrap().contains("Relay task"));
+    assert_eq!(first["allowed_mentions"]["parse"], json!([]));
+    assert!(first.get("flags").is_none());
+    assert!(!first.to_string().contains("test-interaction-token"));
+    let (_, replay) = send_transport(&router, &key, payload.clone(), true).await?;
+    assert_eq!(first, replay);
+    let (_, direct) = send(&router, &key, payload).await?;
+    assert_eq!(direct["type"], 4);
+    assert_eq!(direct["data"]["flags"], 64);
+    assert_eq!(direct["data"]["content"], first["content"]);
+    assert_eq!(
+        store
+            .list_tasks(DEVELOPMENT_USER_ID, None, None, 100)
+            .await?
+            .items
+            .len(),
+        1
+    );
+    let receipts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM discord_interactions")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(receipts, 1);
+    Ok(())
 }
 
 #[sqlx::test(migrations = "../../migrations")]

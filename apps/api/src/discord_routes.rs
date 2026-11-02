@@ -174,13 +174,9 @@ fn provider_failure(error: anyhow::Error) -> Response {
         .retry_after_seconds
         .map(|seconds| format!("Wait {seconds} seconds, then "))
         .unwrap_or_else(|| "Try again later: ".into());
-    let message = if rate.stage == "reply" {
-        "Discord is temporarily rate limiting command delivery. The command may already have succeeded. Check rakkio before submitting it again.".to_owned()
-    } else {
-        format!(
-            "Discord is temporarily rate limiting account linking. {wait}start a fresh connection from rakkio Settings. Do not refresh this callback page."
-        )
-    };
+    let message = format!(
+        "Discord is temporarily rate limiting account linking. {wait}start a fresh connection from rakkio Settings. Do not refresh this callback page."
+    );
     let mut response = (
         StatusCode::TOO_MANY_REQUESTS,
         Json(ErrorResponse {
@@ -191,10 +187,6 @@ fn provider_failure(error: anyhow::Error) -> Response {
         }),
     )
         .into_response();
-    response.headers_mut().insert(
-        "x-rakkio-discord-provider-rate-limit",
-        axum::http::HeaderValue::from_static("1"),
-    );
     if let Some(seconds) = rate.retry_after_seconds {
         // A validated integer contains only header-safe ASCII digits.
         if let Ok(value) = seconds.to_string().parse() {
@@ -296,12 +288,10 @@ pub async fn interactions(State(state): State<AppState>, request: Request) -> Ap
         .get("x-rakkio-discord-deferred")
         .is_some_and(|value| value == "1")
     {
-        // Only a UI/transport choice; never an authentication credential. PATCH
-        // updates the same original message, so retrying delivery is idempotent.
-        if let Err(error) = discord.reply(&interaction, &response).await {
-            return Ok(provider_failure(error));
-        }
-        Ok(StatusCode::NO_CONTENT.into_response())
+        // Only a transport choice, never an authentication credential. The
+        // relay edits the original private message after this committed result.
+        // Retrying the signed interaction returns its receipt, not another write.
+        Ok(Json(response).into_response())
     } else {
         // Always-on self-hosters can use this endpoint directly, without Vercel.
         let mut response = response;
@@ -347,31 +337,6 @@ mod tests {
                 assert!(message.contains("Try again later"));
             }
         }
-    }
-
-    #[tokio::test]
-    async fn delivery_rate_limit_preserves_cooldown_without_encouraging_duplicate_tasks() {
-        let response = provider_failure(
-            discord::DiscordRateLimit {
-                stage: "reply",
-                scope: "shared",
-                retry_after_seconds: Some(5),
-            }
-            .into(),
-        );
-        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(
-            response.headers()["x-rakkio-discord-provider-rate-limit"],
-            "1"
-        );
-        assert_eq!(response.headers()[header::RETRY_AFTER], "5");
-        let bytes = axum::body::to_bytes(response.into_body(), 4096)
-            .await
-            .unwrap();
-        let body: Value = serde_json::from_slice(&bytes).unwrap();
-        let message = body["error"]["message"].as_str().unwrap();
-        assert!(message.contains("may already have succeeded"));
-        assert!(!message.contains("fresh connection"));
     }
 
     #[tokio::test]

@@ -28,7 +28,10 @@ function request(body: string, timestamp = Math.floor(Date.now() / 1000).toStrin
   })
 }
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('Discord fast acknowledgement', () => {
   it('returns a private deferred response without waiting for a sleeping backend', async () => {
@@ -139,6 +142,173 @@ describe('Discord fast acknowledgement', () => {
     expect(fetcher.mock.calls[0]?.[1]?.headers).toEqual(fetcher.mock.calls[1]?.[1]?.headers)
   })
 
+  it('delivers the committed backend reply from the relay rather than asking Render to contact Discord', async () => {
+    const message = {
+      content: 'Today: private task',
+      components: [],
+      allowed_mentions: { parse: ['everyone'] },
+    }
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(message))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const work: Promise<void>[] = []
+    const ack = await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    expect(await ack.json()).toEqual({ type: 5, data: { flags: 64 } })
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls[1]?.[1]?.method).toBe('PATCH')
+    expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({
+      ...message,
+      allowed_mentions: { parse: [] },
+    })
+  })
+
+  it('retries only delivery, not the committed task operation, after a short provider cooldown', async () => {
+    vi.useFakeTimers()
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ content: 'Added to Inbox', components: [] }))
+      .mockResolvedValueOnce(Response.json({ retry_after: 1 }, { status: 429 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1000)
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(fetcher.mock.calls.filter(([url]) => url === config.backendUrl)).toHaveLength(1)
+    expect(fetcher.mock.calls[1]?.[1]?.body).toEqual(fetcher.mock.calls[2]?.[1]?.body)
+  })
+
+  it('does not replay tasks or make an early fallback after a long direct-provider limit', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ content: 'private-reply-content', components: [] }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { retry_after: 3317, global: true, message: 'private-provider-detail' },
+          { status: 429 },
+        ),
+      )
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls.filter(([url]) => url === config.backendUrl)).toHaveLength(1)
+    const logs = JSON.stringify(warning.mock.calls)
+    expect(logs).toContain('3317')
+    for (const secret of [
+      'private-reply-content',
+      'private-provider-detail',
+      payload.token,
+      'webhooks/',
+    ])
+      expect(logs).not.toContain(secret)
+  })
+
+  it('uses the later fractional provider hint rather than retrying early', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ content: 'Plan', components: [] }))
+      .mockResolvedValueOnce(
+        Response.json({ retry_after: 4.1 }, { status: 429, headers: { 'retry-after': '1' } }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    await Promise.all(work)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+  })
+
+  it('bounds and validates backend data before exposing only an uncertain notice', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    for (const body of [
+      'x'.repeat(8193),
+      JSON.stringify({ content: 'x'.repeat(2001), components: [] }),
+      JSON.stringify({ content: 'private-bad-reply', components: {} }),
+    ]) {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(body, { status: 200 }))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      const work: Promise<void>[] = []
+      await receiveDiscord(
+        request(JSON.stringify(payload)),
+        config,
+        (pending) => work.push(pending),
+        fetcher,
+      )
+      await Promise.all(work)
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      const reply = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))
+      expect(reply.content).toContain('may already have succeeded')
+      expect(reply.content).not.toContain('private-bad-reply')
+    }
+  })
+
+  it('preserves private menu components but ignores unrelated backend fields', async () => {
+    const components = [
+      {
+        type: 1,
+        components: [
+          { type: 3, custom_id: 'test-menu', options: [{ label: 'Task', value: 'opaque-value' }] },
+        ],
+      },
+    ]
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          content: 'Choose a task',
+          components,
+          unexpected: 'private-extra',
+          flags: 0,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const work: Promise<void>[] = []
+    await receiveDiscord(
+      request(JSON.stringify(payload)),
+      config,
+      (pending) => work.push(pending),
+      fetcher,
+    )
+    await Promise.all(work)
+    expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({
+      content: 'Choose a task',
+      components,
+      allowed_mentions: { parse: [] },
+    })
+  })
+
   it('waits for a provider cooldown before replaying the same receipt', async () => {
     vi.useFakeTimers()
     const fetcher = vi
@@ -196,7 +366,7 @@ describe('Discord fast acknowledgement', () => {
       new Response(null, {
         status: 429,
         headers: {
-          'retry-after': '15',
+          'retry-after': '3',
           'x-rakkio-discord-provider-rate-limit': '1',
         },
       })
@@ -211,7 +381,7 @@ describe('Discord fast acknowledgement', () => {
       (pending) => work.push(pending),
       fetcher,
     )
-    await vi.advanceTimersByTimeAsync(15_000)
+    await vi.advanceTimersByTimeAsync(3_000)
     await Promise.all(work)
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
