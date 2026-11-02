@@ -262,6 +262,38 @@ async fn today_and_completion_never_cross_accounts_or_rebase_stale_versions(
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn full_multibyte_task_menu_fits_private_receipt_and_discord_limits(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, _, key, _) = fixture(&pool).await?;
+    link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    sqlx::query("INSERT INTO tasks(id,user_id,title,position,version) SELECT gen_random_uuid(),$1,repeat('界',240),number*1024,2147483646 FROM generate_series(1,25) number")
+        .bind(DEVELOPMENT_USER_ID).execute(&pool).await?;
+    let (status, reply) = send(
+        &router,
+        &key,
+        command(150, "111111111111111111", "done", json!([])),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let options = reply["data"]["components"][0]["components"][0]["options"]
+        .as_array()
+        .unwrap();
+    assert_eq!(options.len(), 25);
+    assert!(
+        options
+            .iter()
+            .all(|option| option["label"].as_str().unwrap().encode_utf16().count() <= 60)
+    );
+    let bytes: i32 =
+        sqlx::query_scalar("SELECT octet_length(response::text) FROM discord_interactions LIMIT 1")
+            .fetch_one(&pool)
+            .await?;
+    assert!(bytes <= 8192);
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn deferred_quota_rejection_is_private_durable_and_never_resurrected_on_retry(
     pool: PgPool,
 ) -> anyhow::Result<()> {

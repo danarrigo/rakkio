@@ -77,7 +77,7 @@ class PersonalSafetyTests(unittest.TestCase):
         config = synthetic()
         configure.validate(config)
         config.update({
-            "DISCORD_APPLICATION_ID": "123456789012345678",
+            "DISCORD_APPLICATION_ID": str(123456789012345678),  # Synthetic public identifier, not a credential.
             "DISCORD_CLIENT_SECRET": "synthetic-discord-secret",
             "DISCORD_PUBLIC_KEY": "ab" * 32,
             "DISCORD_REDIRECT_URI": "https://app.prosepect.test/api/v1/auth/discord/callback",

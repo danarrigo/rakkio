@@ -250,9 +250,10 @@ onBeforeUnmount(() => {
           />
           <span>
             I agree to share task titles, deadlines, selections and completion actions requested
-            through commands with Discord. This can include tasks copied from Google Tasks. rakkio
-            stores my Discord identity and command timezone; Discord processes command content under
-            its own privacy policy. Disconnecting does not remove messages already sent.
+            through commands with Discord. This can include tasks synchronized with Google Tasks or
+            Calendar. rakkio stores my Discord identity and command timezone; Discord processes
+            command content under its own privacy policy. Disconnecting does not remove messages
+            already sent.
           </span>
         </label>
         <div class="mt-5 flex flex-wrap items-center gap-4">

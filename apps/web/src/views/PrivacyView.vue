@@ -80,8 +80,8 @@ import PublicPageShell from '../components/PublicPageShell.vue'
       <p>
         When you use a command, Discord processes the command and task information you request,
         including task titles, deadlines, task selections, and completion actions. This may include
-        information copied from Google Tasks. Responses are private to the invoking user by default,
-        but Discord still processes that information under its own
+        task information synchronized with Google Tasks or Calendar. Responses are private to the
+        invoking user by default, but Discord still processes that information under its own
         <a href="https://discord.com/privacy">privacy policy</a>. There are no automatic Discord
         reminders or AI processing. Temporary command receipts prevent duplicate changes and keep
         task selections bound to the version you saw.
@@ -167,7 +167,8 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         <li>when you direct rakkio to place information on a shared Google calendar;</li>
         <li>
           with Discord when you connect your account or request task information and actions through
-          Discord commands; this can include Google Tasks information already copied into rakkio;
+          Discord commands; this can include task information already synchronized with Google Tasks
+          or Calendar;
         </li>
         <li>when necessary to protect the service or investigate abuse; or</li>
         <li>when required by applicable law.</li>

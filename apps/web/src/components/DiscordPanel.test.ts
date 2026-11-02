@@ -62,7 +62,9 @@ describe('Discord account controls', () => {
     await flushPromises()
     const connect = button(wrapper, 'Connect Discord')
     expect(connect.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('This can include tasks copied from Google Tasks')
+    expect(wrapper.text()).toContain(
+      'This can include tasks synchronized with Google Tasks or Calendar',
+    )
     await wrapper.get('input[type="checkbox"]').setValue(true)
     await wrapper.get('input[type="text"], input:not([type])').setValue('Asia/Jakarta')
     expect(connect.attributes('disabled')).toBeUndefined()

@@ -340,6 +340,11 @@ impl Store {
                 let title = option(data, "title")
                     .ok_or_else(|| AppError::Validation("Provide a task title.".into()))?;
                 let due_at = if let Some(due) = option(data, "due") {
+                    if due.len() > 10 {
+                        return Err(AppError::Validation(
+                            "Use today, tomorrow, or YYYY-MM-DD for the deadline.".into(),
+                        ));
+                    }
                     let date: NaiveDate = match due {
                         "today" => {
                             sqlx::query_scalar("SELECT (NOW() AT TIME ZONE $1)::date")
@@ -408,7 +413,7 @@ impl Store {
                 let options: Vec<_> = tasks
                     .iter()
                     .map(|task| {
-                        let title = plain_title(&task.title, 80);
+                        let title = plain_title(&task.title, 60);
                         let label = if title.trim().is_empty() {
                             "Untitled task"
                         } else {

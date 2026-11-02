@@ -21,7 +21,9 @@ Code being present does not mean an installation has enabled or verified Discord
    - `/done`: privately select one of up to 25 unfinished tasks, due tasks first. The menu expires after 15 minutes. Completion uses the version shown; changed/deleted tasks require a fresh selection. Recurring successors and saved forward defaults follow the normal task completion rules.
 5. **Disconnect Discord** confirms and removes this installation's identity link and command receipts. Tasks and Google connections remain. It cannot erase messages or records already processed by Discord. Removing the app in Discord stops access to its commands but does not itself erase the local identity link.
 
-Responses are ephemeral/private to the invoking user, including when invoked in a server, but are still processed by Discord. Explicitly requested tasks copied from Google Tasks can be included. Descriptions, notes and attachments are not sent. Task titles are rendered as literal text, and automatic mentions are disabled.
+An already-open web workspace may need a refresh to show Discord changes; save any drafts before reloading. Discord messages are snapshots, not live-updating task views.
+
+Responses are ephemeral/private to the invoking user, including when invoked in a server, but are still processed by Discord. Explicitly requested task fields synchronized with Google Tasks or Calendar can be included. Descriptions, notes and attachments are not sent. Task titles are rendered as literal text, and automatic mentions are disabled.
 
 A rakkio account can have one Discord identity, and a Discord identity can belong to only one rakkio account per installation. Disconnect before changing either account or the command timezone. Delayed events from before a new connection are rejected rather than executed against the newly linked account.
 
