@@ -184,11 +184,8 @@ impl Discord {
         url.into()
     }
 
-    pub async fn identity(&self, code: &str, verifier: &str) -> anyhow::Result<DiscordIdentity> {
-        // Fixed endpoints only. Error messages deliberately omit reqwest errors,
-        // whose URLs can contain short-lived credentials in other API methods.
-        let response = self
-            .http
+    fn token_request(&self, code: &str, verifier: &str) -> reqwest::RequestBuilder {
+        self.http
             .post("https://discord.com/api/v10/oauth2/token")
             .form(&[
                 ("grant_type", "authorization_code"),
@@ -198,6 +195,13 @@ impl Discord {
                 ("redirect_uri", self.config.redirect_uri.as_str()),
                 ("code_verifier", verifier),
             ])
+    }
+
+    pub async fn identity(&self, code: &str, verifier: &str) -> anyhow::Result<DiscordIdentity> {
+        // Fixed endpoints only. Error messages deliberately omit reqwest errors,
+        // whose URLs can contain short-lived credentials in other API methods.
+        let response = self
+            .token_request(code, verifier)
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("Discord authorization unavailable"))?;
@@ -404,6 +408,55 @@ mod tests {
             bounded_json(large).await.unwrap_err().to_string(),
             "Discord response too large"
         );
+    }
+
+    #[test]
+    fn token_exchange_authenticates_in_header_and_preserves_pkce() {
+        use base64::Engine;
+        let discord = Discord::new(DiscordConfig {
+            application_id: "123".into(),
+            client_secret: "test-secret".into(),
+            public_key: "00".repeat(32),
+            redirect_uri: "https://example.test/api/v1/auth/discord/callback".into(),
+        })
+        .unwrap();
+        let request = discord
+            .token_request("test-code", "test-verifier")
+            .build()
+            .unwrap();
+        let auth = request
+            .headers()
+            .get(reqwest::header::AUTHORIZATION)
+            .expect("token exchange must authenticate in the Authorization header")
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(auth.strip_prefix("Basic ").unwrap())
+                .unwrap(),
+            b"123:test-secret"
+        );
+        let form: std::collections::HashMap<String, String> =
+            serde_urlencoded::from_bytes(request.body().unwrap().as_bytes().unwrap()).unwrap();
+        assert_eq!(form.get("code_verifier").unwrap(), "test-verifier");
+        assert_eq!(form.get("code").unwrap(), "test-code");
+        assert_eq!(form.get("grant_type").unwrap(), "authorization_code");
+        assert!(!form.contains_key("client_secret"));
+        assert!(!form.contains_key("client_id"));
+    }
+
+    #[tokio::test]
+    async fn rate_limit_metadata_is_safe_and_does_not_shorten_cooldown() {
+        let response: reqwest::Response = http::Response::builder()
+            .status(429)
+            .header("retry-after", "2.2")
+            .body(r#"{"retry_after":8.1,"global":true,"message":"private-detail"}"#.to_owned())
+            .unwrap()
+            .into();
+        let error = bounded_json(response).await.unwrap_err().to_string();
+        assert!(error.contains("retry_after_seconds=Some(9)"), "{error}");
+        assert!(error.contains("scope=global"), "{error}");
+        assert!(!error.contains("private-detail"));
     }
 
     #[test]
