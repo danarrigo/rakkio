@@ -201,7 +201,9 @@ impl Discord {
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("Discord authorization unavailable"))?;
-        let token = bounded_json(response).await?;
+        let token = bounded_json(response)
+            .await
+            .map_err(|error| anyhow::anyhow!("Discord token exchange: {error}"))?;
         anyhow::ensure!(
             token["token_type"]
                 .as_str()
@@ -222,7 +224,10 @@ impl Discord {
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("Discord identity unavailable"))?;
-        let user: DiscordIdentity = serde_json::from_value(bounded_json(response).await?)
+        let identity = bounded_json(response)
+            .await
+            .map_err(|error| anyhow::anyhow!("Discord identity lookup: {error}"))?;
+        let user: DiscordIdentity = serde_json::from_value(identity)
             .map_err(|_| anyhow::anyhow!("invalid Discord identity"))?;
         anyhow::ensure!(
             snowflake(&user.id) && !user.username.trim().is_empty() && user.username.len() <= 256,
@@ -270,10 +275,7 @@ impl Discord {
 }
 
 async fn bounded_json(mut response: reqwest::Response) -> anyhow::Result<Value> {
-    anyhow::ensure!(
-        response.status().is_success(),
-        "Discord rejected the request"
-    );
+    let status = response.status();
     let mut body = Vec::new();
     while let Some(chunk) = response
         .chunk()
@@ -286,7 +288,35 @@ async fn bounded_json(mut response: reqwest::Response) -> anyhow::Result<Value> 
         );
         body.extend_from_slice(&chunk);
     }
-    serde_json::from_slice(&body).map_err(|_| anyhow::anyhow!("invalid Discord response"))
+    let parsed = serde_json::from_slice::<Value>(&body);
+    if !status.is_success() {
+        // Only standard OAuth categories are safe to report. Never include
+        // arbitrary provider text, descriptions, URLs, codes, or token fields.
+        let category = parsed
+            .as_ref()
+            .ok()
+            .and_then(|value| value["error"].as_str())
+            .filter(|category| {
+                matches!(
+                    *category,
+                    "invalid_client"
+                        | "invalid_grant"
+                        | "invalid_request"
+                        | "invalid_scope"
+                        | "unauthorized_client"
+                        | "unsupported_grant_type"
+                        | "access_denied"
+                        | "server_error"
+                        | "temporarily_unavailable"
+                )
+            })
+            .unwrap_or("unavailable");
+        bail!(
+            "Discord rejected the request (HTTP {}, OAuth category: {category})",
+            status.as_u16()
+        );
+    }
+    parsed.map_err(|_| anyhow::anyhow!("invalid Discord response"))
 }
 
 pub fn message(content: impl Into<String>) -> Value {
@@ -327,6 +357,53 @@ mod tests {
         assert_eq!(rendered.encode_utf16().count(), 60);
         assert_eq!(rendered.chars().count(), 30);
         assert_eq!(plain_title("a\n`\u{202e}b", 20), "a   b");
+    }
+
+    #[tokio::test]
+    async fn provider_rejections_report_safe_status_and_oauth_category() {
+        let response: reqwest::Response = http::Response::builder().status(400)
+            .body(r#"{"error":"invalid_grant","error_description":"private-provider-detail","access_token":"private-token-value"}"#.to_owned()).unwrap().into();
+        let error = bounded_json(response).await.unwrap_err().to_string();
+        assert!(error.contains("HTTP 400"), "{error}");
+        assert!(error.contains("invalid_grant"), "{error}");
+        assert!(!error.contains("private-provider-detail"));
+        assert!(!error.contains("private-token-value"));
+    }
+
+    #[tokio::test]
+    async fn unknown_error_payloads_are_never_logged() {
+        let response: reqwest::Response = http::Response::builder()
+            .status(403)
+            .body(
+                r#"{"error":"private-unrecognized-value","message":"private-message"}"#.to_owned(),
+            )
+            .unwrap()
+            .into();
+        let error = bounded_json(response).await.unwrap_err().to_string();
+        assert!(error.contains("HTTP 403"), "{error}");
+        assert!(!error.contains("private-unrecognized-value"));
+        assert!(!error.contains("private-message"));
+    }
+
+    #[tokio::test]
+    async fn html_and_oversized_provider_errors_remain_bounded_and_redacted() {
+        let html: reqwest::Response = http::Response::builder()
+            .status(403)
+            .body("<html>private-block-page</html>".to_owned())
+            .unwrap()
+            .into();
+        let error = bounded_json(html).await.unwrap_err().to_string();
+        assert!(error.contains("HTTP 403"));
+        assert!(!error.contains("private-block-page"));
+        let large: reqwest::Response = http::Response::builder()
+            .status(400)
+            .body("x".repeat(MAX_BODY + 1))
+            .unwrap()
+            .into();
+        assert_eq!(
+            bounded_json(large).await.unwrap_err().to_string(),
+            "Discord response too large"
+        );
     }
 
     #[test]

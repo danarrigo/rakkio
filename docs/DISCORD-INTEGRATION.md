@@ -98,6 +98,12 @@ The script states the target and requires typing `REGISTER YOUR_PUBLIC_APPLICATI
 - JSON account exports include the user's own Discord connection metadata, not OAuth state, tokens or command receipts. Account deletion cascades all integration records.
 - Do not log raw requests, interaction tokens, OAuth codes, access tokens or Discord webhook URLs containing interaction tokens. Provider log retention and infrastructure limits still need operator review.
 
+## Troubleshooting account linking
+
+An `integration_error` response deliberately hides provider details. The API log identifies the failed stage (`Discord token exchange` or `Discord identity lookup`), HTTP status and, when available, an allowlisted standard OAuth error category. It never includes raw provider bodies, error descriptions, authorization codes, tokens or request URLs. Unknown categories and HTML block pages remain redacted; error bodies use the same 64 KiB bound as successful responses.
+
+Check this context before changing credentials or OAuth behavior. A successful local application-credential check does not prove the running API has the same settings or that a user authorization-code exchange succeeded. Start a fresh connection from Settings after correcting configuration; do not reuse an old callback URL. Never send a full OAuth URL or private configuration file in a support report.
+
 ## Verification and release gates
 
 Automated coverage includes signed HTTP commands against disposable PostgreSQL, owner isolation, replay protection, changed-task rejection, OAuth browser/owner/CSRF binding, mocked cold-backend acknowledgement, Settings opt-in/disconnect/account races, mobile/light/dark browser layouts and offline command-registration safety.
