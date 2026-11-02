@@ -61,6 +61,7 @@ pub struct Config {
     pub invite_only: bool,
     pub trust_proxy_headers: bool,
     pub google_oauth: Option<GoogleOAuthConfig>,
+    pub discord: Option<crate::discord::DiscordConfig>,
     pub object_storage: ObjectStorageConfig,
     pub max_file_size_bytes: usize,
     pub max_user_file_storage_bytes: i64,
@@ -143,6 +144,33 @@ impl Config {
             bail!("Google OAuth configuration is required in production");
         }
 
+        let discord = match [
+            env_nonempty("DISCORD_APPLICATION_ID"),
+            env_nonempty("DISCORD_CLIENT_SECRET"),
+            env_nonempty("DISCORD_PUBLIC_KEY"),
+            env_nonempty("DISCORD_REDIRECT_URI"),
+        ] {
+            [
+                Some(application_id),
+                Some(client_secret),
+                Some(public_key),
+                Some(redirect_uri),
+            ] => {
+                if environment == Environment::Production && !redirect_uri.starts_with("https://") {
+                    bail!("DISCORD_REDIRECT_URI must use HTTPS in production");
+                }
+                Some(crate::discord::DiscordConfig {
+                    application_id,
+                    client_secret,
+                    public_key,
+                    redirect_uri,
+                })
+            }
+            [None, None, None, None] => None,
+            _ => bail!(
+                "DISCORD_APPLICATION_ID, DISCORD_CLIENT_SECRET, DISCORD_PUBLIC_KEY, and DISCORD_REDIRECT_URI must be configured together"
+            ),
+        };
         let object_storage = object_storage_from(environment, |name| env::var(name).ok())?;
 
         let max_file_size_bytes = env::var("MAX_FILE_SIZE_BYTES")
@@ -208,6 +236,7 @@ impl Config {
             invite_only,
             trust_proxy_headers,
             google_oauth,
+            discord,
             object_storage,
             max_file_size_bytes,
             max_user_file_storage_bytes,

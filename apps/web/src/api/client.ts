@@ -15,6 +15,9 @@ import type {
   CreateTaskRequest,
   DailyPlan,
   DailyReview,
+  DiscordStatus,
+  DiscordConnectRequest,
+  DiscordDisconnectRequest,
   FileRecord,
   FileUsage,
   GoogleIntegrationStatus,
@@ -151,6 +154,18 @@ export async function getOperationsSnapshot(signal?: AbortSignal): Promise<Opera
       fetch: privateOperationsFetch,
     }),
   )
+}
+
+export async function getDiscordStatus(signal?: AbortSignal): Promise<DiscordStatus> {
+  return unwrap(await client.GET('/api/v1/integrations/discord', { signal, cache: 'no-store' }))
+}
+
+export async function connectDiscord(body: DiscordConnectRequest, signal?: AbortSignal) {
+  return unwrap(await client.POST('/api/v1/integrations/discord/connect', { body, signal }))
+}
+
+export async function disconnectDiscord(body: DiscordDisconnectRequest, signal?: AbortSignal) {
+  unwrap(await client.POST('/api/v1/integrations/discord/disconnect', { body, signal }))
 }
 
 export async function getGoogleIntegration(signal?: AbortSignal): Promise<GoogleIntegrationStatus> {

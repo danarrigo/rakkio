@@ -23,5 +23,9 @@ export default tseslint.config(
       'vue/no-v-html': 'error',
     },
   },
+  {
+    files: ['api/**/*.ts', 'server/**/*.ts'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
   eslintConfigPrettier,
 )

@@ -7,8 +7,19 @@
     "node": ">=22.22.2"
   },
   "workspaces": [
-    "apps/web"
+    "apps/web",
+    "packages/minimatch-compat"
   ],
+  "overrides": {
+    "@redocly/openapi-core": {
+      "minimatch": "file:packages/minimatch-compat"
+    },
+    "minimatch": "^11.0.3",
+    "glob": "^14.0.3",
+    "@vercel/cli-config": {
+      "zod": "^4.6.7"
+    }
+  },
   "scripts": {
     "dev:web": "npm run dev --workspace @rakkio/web",
     "build:web": "npm run build --workspace @rakkio/web",

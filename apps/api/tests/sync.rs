@@ -1586,6 +1586,7 @@ async fn delete_with_provider(
         secure_cookies: false,
         app_url: "http://localhost".into(),
         google_oauth: None,
+        discord: None,
         file_storage: FileStorage::new(&prosepect_api::config::ObjectStorageConfig::Local {
             root: std::env::temp_dir()
                 .join("prosepect-sync-tests")

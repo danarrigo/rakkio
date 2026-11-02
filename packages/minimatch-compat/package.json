@@ -1,0 +1,10 @@
+{
+  "name": "@rakkio/minimatch-compat",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "main": "index.cjs",
+  "dependencies": {
+    "minimatch-modern": "npm:minimatch@^11.0.3"
+  }
+}

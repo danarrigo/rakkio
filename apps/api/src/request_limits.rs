@@ -25,6 +25,7 @@ pub struct RequestLimits {
     reads: LoginRateLimiter,
     requests: Arc<Semaphore>,
     authentication: Arc<Semaphore>,
+    discord: Arc<Semaphore>,
     large: Arc<Semaphore>,
     accounts: Arc<Mutex<HashMap<Uuid, Arc<AccountSlots>>>>,
 }
@@ -49,6 +50,7 @@ impl Default for RequestLimits {
             reads: LoginRateLimiter::with_limit(600),
             requests: Arc::new(Semaphore::new(32)),
             authentication: Arc::new(Semaphore::new(4)),
+            discord: Arc::new(Semaphore::new(4)),
             large: Arc::new(Semaphore::new(2)),
             accounts: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -58,6 +60,19 @@ impl Default for RequestLimits {
 impl RequestLimits {
     pub fn check_write(&self, user_id: Uuid) -> AppResult<()> {
         self.writes.check_key(&user_id.to_string())
+    }
+
+    pub(crate) async fn discord_admission(&self) -> AppResult<OwnedSemaphorePermit> {
+        acquire(&self.discord).await
+    }
+
+    pub(crate) async fn discord_command(&self, user: Uuid, write: bool) -> AppResult<impl Sized> {
+        if write {
+            self.check_write(user)?;
+        }
+        let account = self.account_request(user, write, false).await?;
+        let request = acquire(&self.requests).await?;
+        Ok((account, request))
     }
 
     pub fn large_request(&self) -> AppResult<OwnedSemaphorePermit> {
@@ -196,6 +211,23 @@ pub async fn limit_requests(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn discord_slots_cannot_starve_public_login() {
+        let limits = RequestLimits::default();
+        let mut webhooks = Vec::new();
+        for _ in 0..4 {
+            webhooks.push(limits.discord_admission().await.unwrap());
+        }
+        assert!(limits.discord.clone().try_acquire_owned().is_err());
+        assert!(limits.authentication.clone().try_acquire_owned().is_ok());
+        drop(webhooks);
+        let mut authentication = Vec::new();
+        for _ in 0..4 {
+            authentication.push(limits.authentication.clone().try_acquire_owned().unwrap());
+        }
+        assert!(limits.discord_admission().await.is_ok());
+    }
 
     #[test]
     fn large_requests_are_bounded_across_clones_and_release_on_drop() {

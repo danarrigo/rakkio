@@ -1865,6 +1865,171 @@
         ]
       }
     },
+    "/api/v1/integrations/discord": {
+      "get": {
+        "tags": [
+          "discord"
+        ],
+        "operationId": "discord_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/discord/connect": {
+      "post": {
+        "tags": [
+          "discord"
+        ],
+        "operationId": "discord_connect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordAuthorization"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/integrations/discord/disconnect": {
+      "post": {
+        "tags": [
+          "discord"
+        ],
+        "operationId": "discord_disconnect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordDisconnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
     "/api/v1/integrations/google": {
       "get": {
         "tags": [
@@ -5090,6 +5255,102 @@
           }
         }
       },
+      "DiscordAuthorization": {
+        "type": "object",
+        "required": [
+          "authorization_url"
+        ],
+        "properties": {
+          "authorization_url": {
+            "type": "string"
+          }
+        }
+      },
+      "DiscordConnectRequest": {
+        "type": "object",
+        "required": [
+          "timezone",
+          "consent_version"
+        ],
+        "properties": {
+          "consent_version": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscordConnection": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "timezone",
+          "connected_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "DiscordDisconnectRequest": {
+        "type": "object",
+        "required": [
+          "expected_id"
+        ],
+        "properties": {
+          "expected_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DiscordStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "consent_version"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscordConnection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consent_version": {
+            "type": "string"
+          },
+          "install_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "required": [
@@ -6846,6 +7107,10 @@
     {
       "name": "settings",
       "description": "User preferences"
+    },
+    {
+      "name": "discord",
+      "description": "Optional private Discord task commands"
     },
     {
       "name": "projects",

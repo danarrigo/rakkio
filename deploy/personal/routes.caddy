@@ -1,6 +1,6 @@
 (app_routes) {
     encode zstd gzip
-    @backend path /api/* /api-doc/* /docs* /health /ready /webhooks/google/calendar
+    @backend path /api/* /api-doc/* /docs* /health /ready /webhooks/google/calendar /webhooks/discord
     handle @backend {
         reverse_proxy api:3000 {
             # Backend uses the FIRST XFF value. Never accept a caller's chain.

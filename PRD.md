@@ -229,6 +229,16 @@ The following are not part of v1:
 - Shared projects or real-time collaboration
 - AI-generated plans, summaries, or capture
 
+### 6.15 Optional Discord commands
+
+- One official application for hosted rakkio; self-hosters supply a separate application and credentials.
+- Explicit browser/account-bound linking and a separate data-sharing notice; only identity and application-command permissions.
+- `/add` creates a literal Inbox task with an optional local-date deadline; `/today` provides a bounded private summary; `/done` completes a selected saved version using normal recurrence rules.
+- Replies are private by default. No chat scraping, AI, automatic reminders or arbitrary third-party-instance routing.
+- Signed interactions, per-account limits, replay-safe task changes, explicit disconnect and account-deletion cleanup.
+- The sleeping hosted API uses a fast acknowledgement relay; always-on self-hosters can use the direct endpoint. Real provider acceptance is separate from automated coverage.
+- See [Discord integration](docs/DISCORD-INTEGRATION.md) for setup, constraints and release gates.
+
 ## 7. Technical architecture
 
 ### 7.1 Repository

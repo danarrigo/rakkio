@@ -954,6 +954,22 @@ impl Store {
     }
 
     pub async fn create_task(&self, user_id: Uuid, request: CreateTaskRequest) -> AppResult<Task> {
+        let mut transaction = self.pool.begin().await?;
+        let task = self
+            .create_task_in(&mut transaction, user_id, request)
+            .await?;
+        transaction.commit().await?;
+        Ok(task)
+    }
+
+    // Integrations must commit their idempotency receipt with the normal task
+    // operation, not recreate its validation, recurrence, quota or sync rules.
+    pub(crate) async fn create_task_in(
+        &self,
+        transaction: &mut PgConnection,
+        user_id: Uuid,
+        request: CreateTaskRequest,
+    ) -> AppResult<Task> {
         validate_task_fields(
             &request.title,
             &request.description,
@@ -969,17 +985,16 @@ impl Store {
                 "a recurring task cannot be created as completed".to_owned(),
             ));
         }
-        let mut transaction = self.pool.begin().await?;
-        Self::lock_task_graph(&mut transaction, user_id).await?;
+        Self::lock_task_graph(transaction, user_id).await?;
         self.validate_task_relationships(
-            &mut transaction,
+            transaction,
             user_id,
             request.project_id,
             request.parent_task_id,
         )
         .await?;
 
-        let position = Self::next_task_position(&mut transaction, user_id).await?;
+        let position = Self::next_task_position(transaction, user_id).await?;
         let completed_at = (request.status == TaskStatus::Completed).then(Utc::now);
         let remind_at = request.remind_at;
         let task = sqlx::query_as::<_, Task>(
@@ -1045,9 +1060,8 @@ impl Store {
         .bind(completed_at)
         .fetch_one(&mut *transaction)
         .await?;
-        Self::ensure_labels(&mut transaction, user_id, &task.labels).await?;
-        Self::sync_task_calendar_event(&mut transaction, user_id, &task).await?;
-        transaction.commit().await?;
+        Self::ensure_labels(transaction, user_id, &task.labels).await?;
+        Self::sync_task_calendar_event(transaction, user_id, &task).await?;
 
         Ok(task)
     }
@@ -1126,6 +1140,30 @@ impl Store {
         request: UpdateTaskRequest,
         scope: Option<crate::task_recurrence::RecurrenceEditScope>,
     ) -> AppResult<Task> {
+        let mut transaction = self.pool.begin().await?;
+        let result = self
+            .update_task_scoped_in(&mut transaction, user_id, task_id, request, scope)
+            .await;
+        match result {
+            Ok(task) => {
+                transaction.commit().await?;
+                Ok(task)
+            }
+            Err(error) => {
+                transaction.rollback().await?;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) async fn update_task_scoped_in(
+        &self,
+        transaction: &mut PgConnection,
+        user_id: Uuid,
+        task_id: Uuid,
+        request: UpdateTaskRequest,
+        scope: Option<crate::task_recurrence::RecurrenceEditScope>,
+    ) -> AppResult<Task> {
         validate_task_fields(
             &request.title,
             &request.description,
@@ -1146,18 +1184,17 @@ impl Store {
                 "a task cannot be its own parent".to_owned(),
             ));
         }
-        let mut transaction = self.pool.begin().await?;
         let result: AppResult<Task> = async {
-            Self::lock_task_graph(&mut transaction, user_id).await?;
+            Self::lock_task_graph(transaction, user_id).await?;
             self.validate_task_relationships(
-                &mut transaction,
+                transaction,
                 user_id,
                 request.project_id,
                 request.parent_task_id,
             )
             .await?;
             self.validate_task_update_relationships(
-                &mut transaction,
+                transaction,
                 user_id,
                 task_id,
                 request.project_id,
@@ -1166,16 +1203,13 @@ impl Store {
             )
             .await?;
 
-            let mut recurring = crate::task_recurrence::RecurringTaskState::load(
-                &mut transaction,
-                user_id,
-                task_id,
-            )
-            .await?;
+            let mut recurring =
+                crate::task_recurrence::RecurringTaskState::load(transaction, user_id, task_id)
+                    .await?;
             recurring.prepare(&request, scope)?;
             let previous_status = recurring.task.status;
             if previous_status == TaskStatus::Completed && request.status != TaskStatus::Completed {
-                Self::remove_next_occurrence_for_reopen(&mut transaction, user_id, task_id).await?;
+                Self::remove_next_occurrence_for_reopen(transaction, user_id, task_id).await?;
             }
             let completed_at = (request.status == TaskStatus::Completed).then(Utc::now);
             let remind_at = request.remind_at;
@@ -1247,13 +1281,13 @@ impl Store {
             .await?;
 
             if let Some(task) = task {
-                Self::ensure_labels(&mut transaction, user_id, &task.labels).await?;
-                Self::sync_task_calendar_event(&mut transaction, user_id, &task).await?;
+                Self::ensure_labels(transaction, user_id, &task.labels).await?;
+                Self::sync_task_calendar_event(transaction, user_id, &task).await?;
                 if previous_status != TaskStatus::Completed
                     && task.status == TaskStatus::Completed
                     && task.recurrence != TaskRecurrence::None
                 {
-                    Self::create_next_recurring_task(&mut transaction, user_id, &task).await?;
+                    Self::create_next_recurring_task(transaction, user_id, &task).await?;
                 }
                 return Ok(task);
             }
@@ -1275,16 +1309,7 @@ impl Store {
             }
         }
         .await;
-        match result {
-            Ok(task) => {
-                transaction.commit().await?;
-                Ok(task)
-            }
-            Err(error) => {
-                transaction.rollback().await?;
-                Err(error)
-            }
-        }
+        result
     }
 
     pub async fn reorder_tasks(

@@ -29,7 +29,7 @@ use crate::{
 };
 
 const CURRENT_TERMS_VERSION: &str = "2026-10-04";
-const CURRENT_PRIVACY_VERSION: &str = "2026-10-04";
+const CURRENT_PRIVACY_VERSION: &str = "2026-10-31";
 
 #[utoipa::path(
     get,

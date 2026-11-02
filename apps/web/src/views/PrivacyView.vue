@@ -6,7 +6,7 @@ import PublicPageShell from '../components/PublicPageShell.vue'
   <PublicPageShell
     title="Privacy Policy"
     summary="How rakkio collects, uses, stores, and protects personal data, including information received through Google APIs."
-    last-updated="October 4, 2026"
+    last-updated="October 31, 2026"
   >
     <section>
       <h2>1. Who operates rakkio</h2>
@@ -69,6 +69,24 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         enable, not advertising, sale, or AI training.
       </p>
 
+      <h3>Discord integration</h3>
+      <p>
+        Discord is optional and requires a separate account connection and data-sharing notice in
+        Settings. rakkio requests only your Discord identity, stores your Discord user identifier,
+        username, chosen command time zone, connection time, and notice version, and links them to
+        your existing rakkio account. It does not request access to your chat history or retain
+        Discord access or refresh tokens after checking your identity.
+      </p>
+      <p>
+        When you use a command, Discord processes the command and task information you request,
+        including task titles, deadlines, task selections, and completion actions. This may include
+        task information synchronized with Google Tasks or Calendar. Responses are private to the
+        invoking user by default, but Discord still processes that information under its own
+        <a href="https://discord.com/privacy">privacy policy</a>. There are no automatic Discord
+        reminders or AI processing. Temporary command receipts prevent duplicate changes and keep
+        task selections bound to the version you saw.
+      </p>
+
       <h3>Technical and security information</h3>
       <p>
         rakkio and its hosting providers process request information needed to deliver and secure
@@ -95,6 +113,7 @@ import PublicPageShell from '../components/PublicPageShell.vue'
           provide tasks, projects, notes, calendars, attachments, exports, and daily planning;
         </li>
         <li>perform the Google Calendar and Google Tasks synchronization you enable;</li>
+        <li>perform private task commands through Discord when you separately connect it;</li>
         <li>
           protect accounts, prevent abuse, diagnose failures, and maintain service reliability;
         </li>
@@ -105,7 +124,8 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         Depending on the processing, the legal basis is performance of the service you request, your
         consent, compliance with legal obligations, or the legitimate interest in operating a secure
         and reliable service while respecting your rights. You may stop optional synchronization in
-        Settings or revoke Google access at any time.
+        Settings or revoke Google access at any time. You can independently disconnect Discord in
+        Settings without affecting Google access or your tasks.
       </p>
     </section>
 
@@ -145,6 +165,11 @@ import PublicPageShell from '../components/PublicPageShell.vue'
           application, Render for the API, Neon for PostgreSQL, and Cloudflare R2 for attachments;
         </li>
         <li>when you direct rakkio to place information on a shared Google calendar;</li>
+        <li>
+          with Discord when you connect your account or request task information and actions through
+          Discord commands; this can include task information already synchronized with Google Tasks
+          or Calendar;
+        </li>
         <li>when necessary to protect the service or investigate abuse; or</li>
         <li>when required by applicable law.</li>
       </ul>
@@ -176,6 +201,15 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         credentials and Google-sourced calendar records. It does not delete your Google Tasks copies
         or imported rakkio tasks. You can also revoke access from your Google Account. Retained task
         mappings and recovery data are removed when your rakkio account is deleted.
+      </p>
+      <p>
+        Disconnecting Discord stops future commands and removes the local identity link and command
+        receipts; existing rakkio tasks remain. Account deletion also removes the link. Temporary
+        command receipts expire after 15 minutes and are removed by bounded maintenance or on
+        disconnect. Incomplete connection attempts expire after ten minutes. Disconnecting rakkio
+        cannot remove messages or other records already processed by Discord; manage those under
+        Discord's controls and retention policy. You can also remove the app from Discord's
+        settings.
       </p>
       <p>
         You can delete your rakkio account from Settings. Account deletion revokes stored Google
