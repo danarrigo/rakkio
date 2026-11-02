@@ -18,6 +18,7 @@ The application is designed both as a useful personal system and as a production
 - Authorized file upload and download using local storage, MinIO, Cloudflare R2, or another S3-compatible service
 - Portable JSON, CSV, Markdown, and ICS exports plus complete account and integration deletion
 - Responsive keyboard-accessible UI with system-aware and manual light or dark themes
+- Optional private Discord `/add`, `/today`, and version-bound `/done` commands linked to the same workspace
 
 Hosted app: <https://rakkio.com>. Source: <https://github.com/danarrigo/rakkio>.
 
@@ -30,7 +31,7 @@ See [PRD.md](PRD.md) for the product contract. The public name is rakkio; legacy
 - **Data:** PostgreSQL for canonical product state, jobs, conflicts, and activity
 - **Files:** local filesystem in development or S3-compatible object storage
 - **Background work:** portable long-running or one-shot worker, plus an authenticated API trigger for hosted cron
-- **Hosted deployment:** Vercel SPA, Render Free API, GitHub Actions synchronization trigger, Neon PostgreSQL, and Cloudflare R2
+- **Hosted deployment:** Vercel SPA and optional fast Discord acknowledgement function, Render Free API, GitHub Actions synchronization trigger, Neon PostgreSQL, and Cloudflare R2
 - **Personal self-hosting:** Docker Compose with PostgreSQL, private persistent files, API, worker, and one HTTPS web hostname
 
 ## Repository layout
@@ -103,6 +104,10 @@ The frontend runs at <http://localhost:5173>. Swagger UI runs at <http://localho
 
 Production requires Google configuration, secure cookies, and development authentication disabled. S3-compatible storage remains the default production requirement for hosted deployments; the personal-server package explicitly opts into local storage with `FILE_STORAGE_BACKEND=local` and an absolute persistent `FILE_STORAGE_PATH`. Set `INVITE_ONLY=true` for private access and insert lowercase emails into `account_invites` before first sign-in. For open registration, set a hard `MAX_USER_ACCOUNTS` capacity; existing accounts can still sign in after capacity is reached. `MAX_USER_FILE_STORAGE_BYTES` limits each account independently, while `MAX_TOTAL_FILE_STORAGE_BYTES` remains the deployment-wide ceiling. Hosted deployments should set a random `WORKER_TRIGGER_TOKEN`; the scheduled GitHub workflow renews watches and recovers missed synchronization without compiling Rust on every run.
 
+## Optional Discord setup
+
+See [Discord integration](docs/DISCORD-INTEGRATION.md) for the hosted/shared-app model, separate self-hosted credentials, explicit account linking, private commands, and operator setup. Disabled by default. No bot token, Gateway connection, chat-history permission, or separate database is required. A sleeping API needs the supplied fast relay; always-on self-hosters can use the API endpoint directly. Actual Discord installation and provider acceptance must be checked separately from automated tests.
+
 ## Keyboard shortcuts
 
 - `N` opens global task capture outside editable controls.
@@ -144,4 +149,4 @@ Production configuration, backups, worker behavior, observability, recovery, and
 
 ## License
 
-Prosepect is licensed under the [GNU Affero General Public License v3.0](LICENSE). Network users must be offered the corresponding source for modified deployed versions. The license does not prohibit third-party paid hosting.
+rakkio is licensed under the [GNU Affero General Public License v3.0](LICENSE). Network users must be offered the corresponding source for modified deployed versions. The license does not prohibit third-party paid hosting.

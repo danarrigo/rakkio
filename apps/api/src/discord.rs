@@ -67,6 +67,15 @@ pub struct Member {
 }
 
 impl Interaction {
+    pub fn created_at_millis(&self) -> Option<i64> {
+        // Discord snowflakes bind an event to its creation time. This prevents
+        // a delayed signed command from moving to a newly linked account.
+        self.id
+            .parse::<u64>()
+            .ok()
+            .map(|id| ((id >> 22) as i64) + 1_420_070_400_000)
+    }
+
     pub fn actor(&self) -> Option<&str> {
         let user = self
             .member
@@ -304,4 +313,25 @@ pub fn plain_title(title: &str, limit: usize) -> String {
         result.push(character);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn titles_fit_discord_utf16_limits_without_inline_code_or_direction_breakout() {
+        let title = format!("{}\n`\u{202e}", "😀".repeat(200));
+        let rendered = plain_title(&title, 60);
+        assert_eq!(rendered.encode_utf16().count(), 60);
+        assert_eq!(rendered.chars().count(), 30);
+        assert_eq!(plain_title("a\n`\u{202e}b", 20), "a   b");
+    }
+
+    #[test]
+    fn hex_keys_fail_closed_on_bad_encodings() {
+        assert!(decode_hex("a").is_err());
+        assert!(decode_hex("gg").is_err());
+        assert_eq!(decode_hex("aB01").unwrap(), vec![171, 1]);
+    }
 }

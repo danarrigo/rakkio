@@ -144,6 +144,12 @@ Google authorization uses a ten-minute HttpOnly browser-binding cookie (`__Host-
 
 Vercel and the supplied Caddy frontends apply CSP, framing, MIME and referrer protections. Vite production preview uses the Vercel policy for browser regression tests. If deploying a separate custom API origin, update CSP `connect-src` alongside `VITE_API_URL` and CORS. The default personal Caddy deployment uses same-origin API paths. Inline scripts and framing are denied; inline styles remain allowed for existing dynamic layouts, and HTTPS Markdown images remain supported. API responses are non-cacheable, use `no-referrer`, and add HSTS in production. Spreadsheet exports prefix potentially executable cells with an apostrophe; canonical task content and JSON exports remain unchanged.
 
+## Optional Discord integration
+
+[Discord setup](DISCORD-INTEGRATION.md) documents the dedicated application, four API settings, Vercel's three public relay settings, direct self-hosting endpoint, explicit data-sharing notice and live acceptance gates. Leave all API Discord settings empty to disable it. OAuth uses the existing browser-binding cookie plus a separate owner-bound attempt table. Migration `0027_discord.sql` adds optional identity links and bounded short-lived receipts; no Google credentials or existing task data are renamed.
+
+The webhook has four dedicated admission slots, a 64 KiB signed raw-body cap and a ten-second read deadline, then uses ordinary per-account limits. The relay acknowledges privately before waiting for Render, with a 120-second execution budget; it is not a durable queue or an uptime guarantee. Never log interaction-token webhook URLs or payloads. Command receipts are capped at 100 per connection, expire after 15 minutes, and are removed by bounded maintenance; pending OAuth attempts are capped at five and expire after ten minutes. Keep unrelated hosting integrations and account/storage caps unchanged.
+
 ## Health, metrics, and logs
 
 - `GET /health` checks the API process.

@@ -212,6 +212,23 @@ pub async fn limit_requests(
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn discord_slots_cannot_starve_public_login() {
+        let limits = RequestLimits::default();
+        let mut webhooks = Vec::new();
+        for _ in 0..4 {
+            webhooks.push(limits.discord_admission().await.unwrap());
+        }
+        assert!(limits.discord.clone().try_acquire_owned().is_err());
+        assert!(limits.authentication.clone().try_acquire_owned().is_ok());
+        drop(webhooks);
+        let mut authentication = Vec::new();
+        for _ in 0..4 {
+            authentication.push(limits.authentication.clone().try_acquire_owned().unwrap());
+        }
+        assert!(limits.discord_admission().await.is_ok());
+    }
+
     #[test]
     fn large_requests_are_bounded_across_clones_and_release_on_drop() {
         let limits = RequestLimits::default();

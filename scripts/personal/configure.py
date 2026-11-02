@@ -17,12 +17,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ENV = ROOT / ".env.personal"
 COMPOSE = ROOT / "deploy/personal/compose.yaml"
 PROJECT = "prosepect-personal"
-KEYS = {"APP_HOST", "OWNER_EMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
-        "POSTGRES_PASSWORD", "TOKEN_ENCRYPTION_KEY", "ADMIN_USER_IDS"}
+REQUIRED_KEYS = {"APP_HOST", "OWNER_EMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+                 "POSTGRES_PASSWORD", "TOKEN_ENCRYPTION_KEY", "ADMIN_USER_IDS"}
+DISCORD_KEYS = {"DISCORD_APPLICATION_ID", "DISCORD_CLIENT_SECRET", "DISCORD_PUBLIC_KEY", "DISCORD_REDIRECT_URI"}
+KEYS = REQUIRED_KEYS | DISCORD_KEYS
 
 
 def validate(values):
-    if set(values) != KEYS:
+    if not REQUIRED_KEYS.issubset(values) or not set(values).issubset(KEYS):
         raise ValueError("configuration keys missing or unexpected")
     for name, value in values.items():
         if not re.fullmatch(r"[a-zA-Z0-9_@.+/=,:\-]*", value):
@@ -46,6 +48,17 @@ def validate(values):
         raise ValueError("encryption key must decode to 32 bytes")
     if values["ADMIN_USER_IDS"]:
         uuid.UUID(values["ADMIN_USER_IDS"])
+    if any(values.get(key) for key in DISCORD_KEYS):
+        if not all(values.get(key) for key in DISCORD_KEYS):
+            raise ValueError("configure all four Discord values together")
+        if not re.fullmatch(r"[1-9][0-9]{0,19}", values["DISCORD_APPLICATION_ID"]):
+            raise ValueError("invalid Discord application ID")
+        if not re.fullmatch(r"[a-fA-F0-9]{64}", values["DISCORD_PUBLIC_KEY"]):
+            raise ValueError("invalid Discord verification key")
+        if len(values["DISCORD_CLIENT_SECRET"]) < 16:
+            raise ValueError("invalid Discord client secret")
+        if values["DISCORD_REDIRECT_URI"] != f"https://{values['APP_HOST']}/api/v1/auth/discord/callback":
+            raise ValueError("Discord callback must use this installation's HTTPS hostname")
 
 
 def load_env(path):

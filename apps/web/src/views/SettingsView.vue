@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { Download, Trash2, Upload } from '@lucide/vue'
 import * as api from '../api/client'
+import DiscordPanel from '../components/DiscordPanel.vue'
 import GoogleSyncPanel from '../components/GoogleSyncPanel.vue'
 import GoogleTasksPanel from '../components/GoogleTasksPanel.vue'
 import type { SyncConflictPolicy, ThemePreference } from '../api/types'
@@ -144,7 +145,7 @@ async function deleteAccount() {
         <input v-model="automaticReview" :disabled="saving" class="mt-0.5" type="checkbox" />
         <span>
           <strong class="font-medium">Start the daily review automatically</strong>
-          <span class="mt-1 block text-xs leading-5 text-slate-400">
+          <span class="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
             Prompt for carry-forward decisions when yesterday has unfinished focus tasks.
           </span>
         </span>
@@ -153,7 +154,7 @@ async function deleteAccount() {
         <input v-model="sidebarVisible" :disabled="saving" class="mt-0.5" type="checkbox" />
         <span>
           <strong class="font-medium">Show sidebar</strong>
-          <span class="mt-1 block text-xs leading-5 text-slate-400">
+          <span class="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
             Turn this off for a full-width, command-focused workspace. Return here with
             <kbd>G</kbd> then <kbd>S</kbd>, or use <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd>.
           </span>
@@ -172,6 +173,7 @@ async function deleteAccount() {
       </div>
     </form>
 
+    <DiscordPanel />
     <GoogleSyncPanel />
     <GoogleTasksPanel />
 

@@ -47,6 +47,10 @@ services:
       BIND_ADDRESS: 0.0.0.0:3000
       DATABASE_MAX_CONNECTIONS: "10"
       ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY:-}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
     # Docker copies the image's non-root-owned 0700 directory into a NEW volume.
     volumes:
       - files-data:/data/files

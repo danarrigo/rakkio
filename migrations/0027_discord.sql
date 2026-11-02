@@ -6,7 +6,7 @@ CREATE TABLE discord_connections (
     username TEXT NOT NULL CHECK (octet_length(username) BETWEEN 1 AND 256),
     timezone TEXT NOT NULL CHECK (octet_length(timezone) BETWEEN 1 AND 128),
     consent_version TEXT NOT NULL,
-    connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 
 CREATE TABLE discord_oauth_attempts (

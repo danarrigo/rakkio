@@ -33,6 +33,7 @@ pub(crate) struct CommandOwner {
     pub id: Uuid,
     pub user_id: Uuid,
     pub timezone: String,
+    pub connected_at: DateTime<Utc>,
 }
 
 impl Store {
@@ -157,7 +158,7 @@ impl Store {
 
     pub(crate) async fn discord_owner(&self, discord_id: &str) -> AppResult<Option<CommandOwner>> {
         Ok(sqlx::query_as(
-            "SELECT id,user_id,timezone FROM discord_connections WHERE discord_user_id=$1",
+            "SELECT id,user_id,timezone,connected_at FROM discord_connections WHERE discord_user_id=$1",
         )
         .bind(discord_id)
         .fetch_optional(&self.pool)
@@ -169,6 +170,14 @@ impl Store {
         owner: CommandOwner,
         interaction: &Interaction,
     ) -> AppResult<Value> {
+        if interaction
+            .created_at_millis()
+            .is_none_or(|created| created < owner.connected_at.timestamp_millis())
+        {
+            return Ok(message(
+                "This command predates your current Discord account connection. Run it again in Discord.",
+            ));
+        }
         let mut tx = self.pool.begin().await?;
         Self::lock_task_graph(&mut tx, owner.user_id).await?;
         let current: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM discord_connections WHERE id=$1 AND user_id=$2 AND discord_user_id=$3)")
@@ -235,6 +244,71 @@ impl Store {
                 }
             }
         };
+        sqlx::query("INSERT INTO discord_interactions(id,connection_id,response) VALUES($1,$2,$3)")
+            .bind(&interaction.id)
+            .bind(owner.id)
+            .bind(&response)
+            .execute(&mut *tx)
+            .await?;
+        match tx.commit().await {
+            Ok(()) => Ok(response),
+            Err(error)
+                if error
+                    .as_database_error()
+                    .is_some_and(|error| error.constraint() == Some("workspace_content_quota")) =>
+            {
+                // A deferred quota failure rolled the entire transaction back.
+                // Persist its terminal outcome before publishing it to Discord.
+                self.remember_discord_quota_failure(&owner, interaction)
+                    .await
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    async fn remember_discord_quota_failure(
+        &self,
+        owner: &CommandOwner,
+        interaction: &Interaction,
+    ) -> AppResult<Value> {
+        let mut tx = self.pool.begin().await?;
+        Self::lock_task_graph(&mut tx, owner.user_id).await?;
+        let current: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM discord_connections WHERE id=$1 AND user_id=$2)",
+        )
+        .bind(owner.id)
+        .bind(owner.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !current {
+            return Ok(message(
+                "Your Discord connection changed. Check rakkio before issuing another command.",
+            ));
+        }
+        if let Some(response) = sqlx::query_scalar::<_, Value>(
+            "SELECT response FROM discord_interactions WHERE id=$1 AND connection_id=$2",
+        )
+        .bind(&interaction.id)
+        .bind(owner.id)
+        .fetch_optional(&mut *tx)
+        .await?
+        {
+            return Ok(response);
+        }
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM discord_interactions WHERE connection_id=$1")
+                .bind(owner.id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if count >= 100 {
+            return Err(AppError::InvalidRequest {
+                status: axum::http::StatusCode::TOO_MANY_REQUESTS,
+                message: "Discord receipt capacity reached".into(),
+            });
+        }
+        let response = message(
+            "Workspace content limit reached. Delete unused content in rakkio before adding tasks, then issue a new command.",
+        );
         sqlx::query("INSERT INTO discord_interactions(id,connection_id,response) VALUES($1,$2,$3)")
             .bind(&interaction.id)
             .bind(owner.id)

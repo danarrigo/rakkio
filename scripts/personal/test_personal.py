@@ -73,6 +73,24 @@ class PersonalSafetyTests(unittest.TestCase):
             self.assertNotIn("APP_HOST", configure.docker_env())
             self.assertNotIn("COMPOSE_FILE", configure.docker_env())
 
+    def test_optional_discord_config_is_complete_private_and_same_origin(self):
+        config = synthetic()
+        configure.validate(config)
+        config.update({
+            "DISCORD_APPLICATION_ID": "123456789012345678",
+            "DISCORD_CLIENT_SECRET": "synthetic-discord-secret",
+            "DISCORD_PUBLIC_KEY": "ab" * 32,
+            "DISCORD_REDIRECT_URI": "https://app.prosepect.test/api/v1/auth/discord/callback",
+        })
+        configure.validate(config)
+        for key, value in [("DISCORD_CLIENT_SECRET", ""), ("DISCORD_PUBLIC_KEY", "bad"),
+                           ("DISCORD_REDIRECT_URI", "https://other.example.com/api/v1/auth/discord/callback")]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                configure.validate({**config, key: value})
+        with patch.dict(os.environ, {"DISCORD_APPLICATION_ID": "unexpected", "DISCORD_CLIENT_SECRET": "unexpected"}):
+            self.assertNotIn("DISCORD_APPLICATION_ID", configure.docker_env())
+            self.assertNotIn("DISCORD_CLIENT_SECRET", configure.docker_env())
+
     def test_archive_paths_links_and_devices_rejected(self):
         for name, kind in [("../escape", tarfile.REGTYPE), ("/absolute", tarfile.REGTYPE),
                            ("link", tarfile.SYMTYPE), ("hard", tarfile.LNKTYPE), ("device", tarfile.CHRTYPE)]:
