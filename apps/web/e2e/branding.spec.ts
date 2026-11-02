@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 
 async function mockWorkspace(page: Page, signedIn: boolean, sidebarVisible = true) {
@@ -40,6 +41,57 @@ test.beforeEach(async ({ page }) => {
     }
     await route.fallback()
   })
+})
+
+test('raster favicon fallbacks are declared, served as images, and bypass the SPA rewrite', async ({
+  page,
+  request,
+}) => {
+  await mockWorkspace(page, false)
+  await page.goto('/')
+  await expect(page.locator('link[rel="icon"][type="image/png"]')).toHaveAttribute(
+    'href',
+    '/favicon.png',
+  )
+  await expect(page.locator('link[rel="icon"][type="image/x-icon"]')).toHaveAttribute(
+    'href',
+    '/favicon.ico',
+  )
+  const pngResponse = await request.get('/favicon.png')
+  expect(pngResponse.status()).toBe(200)
+  expect(pngResponse.headers()['content-type']).toContain('image/png')
+  const png = await pngResponse.body()
+  expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
+  expect(png.readUInt32BE(16)).toBe(96)
+  expect(png.readUInt32BE(20)).toBe(96)
+  const icoResponse = await request.get('/favicon.ico')
+  expect(icoResponse.status()).toBe(200)
+  expect(icoResponse.headers()['content-type']).toMatch(/image\/(?:x-icon|vnd\.microsoft\.icon)/)
+  const ico = await icoResponse.body()
+  expect(ico.readUInt16LE(0)).toBe(0)
+  expect(ico.readUInt16LE(2)).toBe(1)
+  expect(ico.readUInt16LE(4)).toBe(4)
+  for (const [index, size] of [16, 32, 48, 96].entries()) {
+    const entry = 6 + 16 * index
+    expect(ico[entry]).toBe(size)
+    expect(ico[entry + 1]).toBe(size)
+    const length = ico.readUInt32LE(entry + 8)
+    const offset = ico.readUInt32LE(entry + 12)
+    expect(offset + length).toBeLessThanOrEqual(ico.length)
+    if (size === 96) expect(ico.subarray(offset, offset + length)).toEqual(png)
+  }
+  const dimensions = await page.evaluate(async () => {
+    const image = new Image()
+    image.src = '/favicon.png'
+    await image.decode()
+    return [image.naturalWidth, image.naturalHeight]
+  })
+  expect(dimensions).toEqual([96, 96])
+  const deployment = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
+  const spaRewrite = new RegExp(`^${deployment.rewrites[0].source}$`)
+  for (const path of ['/favicon.svg', '/favicon.png', '/favicon.ico'])
+    expect(spaRewrite.test(path)).toBe(false)
+  expect(spaRewrite.test('/inbox')).toBe(true)
 })
 
 async function noOverflow(page: Page) {
