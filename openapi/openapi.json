@@ -3040,6 +3040,122 @@
         ]
       }
     },
+    "/api/v1/profile/handle": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "get_handle",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandleProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "operationId": "claim_handle",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimHandleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandleProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -4944,6 +5060,25 @@
           "google"
         ]
       },
+      "ClaimHandleRequest": {
+        "type": "object",
+        "required": [
+          "expected_user_id",
+          "handle"
+        ],
+        "properties": {
+          "expected_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Reject a stale form if the signed-in account changed before dispatch."
+          },
+          "handle": {
+            "type": "string",
+            "description": "Public, permanent handle: 3-30 ASCII letters, digits or underscores.\nCase-insensitive; optional leading @. Cannot be renamed or recycled."
+          }
+        },
+        "additionalProperties": false
+      },
       "CompleteDailyReviewRequest": {
         "type": "object",
         "required": [
@@ -5815,6 +5950,17 @@
           "version": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "HandleProfile": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

@@ -28,6 +28,18 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         confirmation that the account holder meets the stated age requirement.
       </p>
 
+      <h3 id="handles">Optional public handle</h3>
+      <p>
+        You can choose a unique, case-insensitive handle for group invitations as Groups becomes
+        available. Choosing one is optional for existing personal workflows. It is a public
+        identity, not an email address or a Discord account, and does not create a public account
+        directory. Handles cannot currently be renamed or transferred. After account deletion, the
+        plaintext handle and its account link are removed; a one-way SHA-256 reservation remains to
+        prevent someone else from claiming the same identity. This reservation contains no profile
+        identifier or timestamp. It is not a promise that a hash is anonymous, and it is not used
+        for advertising.
+      </p>
+
       <h3>Workspace content</h3>
       <p>
         rakkio stores content you choose to create or import, including tasks, projects, notes,
@@ -220,7 +232,9 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         You can delete your rakkio account from Settings. Account deletion revokes stored Google
         authorization, removes attachment objects, and deletes your account and user-owned records
         from active rakkio systems. Limited security or provider records may remain until their
-        normal retention period expires or when retention is legally required.
+        normal retention period expires or when retention is legally required. The handle
+        reservation described above remains solely to prevent identity reuse, without retaining the
+        plaintext handle or account link.
       </p>
     </section>
 

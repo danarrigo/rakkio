@@ -3,6 +3,7 @@ import { nextTick, ref, watch } from 'vue'
 import { Download, Trash2, Upload } from '@lucide/vue'
 import * as api from '../api/client'
 import DiscordPanel from '../components/DiscordPanel.vue'
+import HandlePanel from '../components/HandlePanel.vue'
 import GoogleSyncPanel from '../components/GoogleSyncPanel.vue'
 import GoogleTasksPanel from '../components/GoogleTasksPanel.vue'
 import type { SyncConflictPolicy, ThemePreference } from '../api/types'
@@ -173,6 +174,7 @@ async function deleteAccount() {
       </div>
     </form>
 
+    <HandlePanel />
     <DiscordPanel />
     <GoogleSyncPanel />
     <GoogleTasksPanel />

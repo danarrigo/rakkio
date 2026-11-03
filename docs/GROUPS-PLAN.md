@@ -105,6 +105,8 @@ Each phase should be a reviewable PR, not one large merge that temporarily expos
 
 ### Phase 1: handles
 
+Implementation in PR #38 uses a separate authenticated own-handle projection, preserving existing session/profile consumers. Claims include the expected signed-in user ID to reject stale-account writes. The registry is capped at 10,000 lifetime reservations; account deletion clears the plaintext handle and profile link, retaining only its SHA-256 reservation. These metadata records have their own fixed cap rather than bypassing an unbounded personal-content budget. Handle claims alone do not enable group membership or shared content.
+
 - Profile claim controls, uniqueness/reserved-name validation, minimal public identity projection and session/profile contracts.
 - Acceptance: case collision/concurrent claim tests, no email leakage, unchanged login/personal workflows, old account migration, mobile/desktop keyboard-accessible controls.
 
