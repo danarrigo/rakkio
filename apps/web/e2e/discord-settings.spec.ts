@@ -1,10 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { DiscordStatus } from '../src/api/types'
 
-async function settings(page: Page, linked = false) {
+async function settings(page: Page, linked = false, legacy = false) {
   let current: DiscordStatus = {
     configured: true,
-    consent_version: '2026-10-31',
+    consent_version: '2026-11-03',
     install_url:
       'https://discord.com/oauth2/authorize?client_id=123456789012345678&scope=applications.commands&integration_type=1',
     connection: linked
@@ -13,6 +13,7 @@ async function settings(page: Page, linked = false) {
           username: 'daniel',
           timezone: 'Asia/Jakarta',
           connected_at: '2026-10-31T00:00:00Z',
+          consent_version: legacy ? '2026-10-31' : '2026-11-03',
         }
       : null,
   }
@@ -64,6 +65,21 @@ async function settings(page: Page, linked = false) {
         authorization_url:
           'https://discord.com/oauth2/authorize?client_id=123456789012345678&scope=identify&state=mock-browser-bound-state',
       }
+    } else if (path === '/integrations/discord/consent') {
+      expect(route.request().headers()['x-csrf-token']).toBe('mock-csrf')
+      expect(route.request().postDataJSON()).toEqual({
+        expected_id: current.connection?.id,
+        consent_version: '2026-11-03',
+        share_calendar_events: true,
+      })
+      writes.push({ path, body: route.request().postDataJSON() })
+      current = {
+        ...current,
+        connection: current.connection
+          ? { ...current.connection, consent_version: '2026-11-03' }
+          : null,
+      }
+      body = current.connection
     } else if (path === '/integrations/discord/disconnect') {
       expect(route.request().headers()['x-csrf-token']).toBe('mock-csrf')
       expect(route.request().postDataJSON()).toEqual({ expected_id: current.connection?.id })
@@ -103,9 +119,40 @@ test('Discord is separate opt-in and redirects only after explicit data-sharing 
   expect(fixture.writes).toEqual([
     {
       path: '/integrations/discord/connect',
-      body: { timezone: 'Asia/Jakarta', consent_version: '2026-10-31' },
+      body: {
+        timezone: 'Asia/Jakarta',
+        consent_version: '2026-11-03',
+        share_calendar_events: true,
+      },
     },
   ])
+})
+
+test('existing Discord links add calendar sharing only after review without reconnecting', async ({
+  page,
+}, info) => {
+  const mobile = !!info.project.use.isMobile
+  await page.setViewportSize({ width: mobile ? 320 : 1280, height: 1000 })
+  await page.emulateMedia({ colorScheme: mobile ? 'dark' : 'light' })
+  const fixture = await settings(page, true, true)
+  await page.goto('/settings')
+  const panel = page.getByRole('region', { name: 'Discord', exact: true })
+  const save = panel.getByRole('button', { name: 'Update Discord sharing', exact: true })
+  await expect(save).toBeDisabled()
+  await expect(
+    panel.getByText('Your current notice covers tasks only.', { exact: false }),
+  ).toBeVisible()
+  expect(fixture.writes).toHaveLength(0)
+  await panel.scrollIntoViewIfNeeded()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await panel.screenshot({ path: info.outputPath('discord-agenda-consent.png') })
+  await panel.getByRole('checkbox').check()
+  await save.click()
+  await expect(panel.getByRole('status')).toContainText('Calendar events are enabled')
+  await expect(panel.getByRole('checkbox')).toHaveCount(0)
+  await expect(panel.getByText('Connected as', { exact: false })).toBeVisible()
+  expect(fixture.writes).toHaveLength(1)
+  expect(fixture.writes[0]?.path).toBe('/integrations/discord/consent')
 })
 
 test('Discord disconnect is confirmed and preserves the rest of the workspace', async ({

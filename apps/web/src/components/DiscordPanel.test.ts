@@ -11,11 +11,12 @@ vi.mock('../api/client', async (original) => ({
   getDiscordStatus: vi.fn(),
   connectDiscord: vi.fn(),
   disconnectDiscord: vi.fn(),
+  updateDiscordConsent: vi.fn(),
 }))
 const initial: DiscordStatus = {
   configured: true,
   connection: null,
-  consent_version: '2026-10-31',
+  consent_version: '2026-11-03',
   install_url:
     'https://discord.com/oauth2/authorize?client_id=123&scope=applications.commands&integration_type=1',
 }
@@ -26,6 +27,7 @@ const connected: DiscordStatus = {
     username: 'Owner',
     timezone: 'Asia/Jakarta',
     connected_at: '2026-10-31T00:00:00Z',
+    consent_version: '2026-11-03',
   },
 }
 const wrappers: VueWrapper[] = []
@@ -73,7 +75,7 @@ describe('Discord account controls', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(api.connectDiscord).toHaveBeenCalledWith(
-      { timezone: 'Asia/Jakarta', consent_version: '2026-10-31' },
+      { timezone: 'Asia/Jakarta', consent_version: '2026-11-03', share_calendar_events: true },
       expect.any(AbortSignal),
     )
     expect(wrapper.get('[role="alert"]').text()).toContain('invalid authorization URL')
@@ -90,6 +92,93 @@ describe('Discord account controls', () => {
     expect(wrapper.get('a.secondary-button').attributes('href')).toBe(initial.install_url)
     expect(wrapper.get('a.secondary-button').attributes('rel')).toContain('noopener')
     expect(api.connectDiscord).not.toHaveBeenCalled()
+  })
+
+  it('requires separate acceptance before adding events without reconnecting', async () => {
+    vi.mocked(api.getDiscordStatus).mockResolvedValue({
+      ...connected,
+      connection: { ...connected.connection!, consent_version: '2026-10-31' },
+    })
+    vi.mocked(api.updateDiscordConsent).mockResolvedValue(connected.connection!)
+    const wrapper = panel()
+    await flushPromises()
+    const save = button(wrapper, 'Update Discord sharing')
+    expect(save.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Calendar events will not be shared until')
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form[aria-label="Update Discord sharing"]').trigger('submit')
+    await flushPromises()
+    expect(api.updateDiscordConsent).toHaveBeenCalledWith(
+      {
+        expected_id: 'connection-owner',
+        consent_version: '2026-11-03',
+        share_calendar_events: true,
+      },
+      expect.any(AbortSignal),
+    )
+    expect(wrapper.text()).toContain('Calendar events are enabled')
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    expect(api.connectDiscord).not.toHaveBeenCalled()
+    expect(api.disconnectDiscord).not.toHaveBeenCalled()
+  })
+
+  it('does not auto-accept a server notice that differs from the UI copy', async () => {
+    vi.mocked(api.getDiscordStatus).mockResolvedValue({ ...initial, consent_version: '2099-01-01' })
+    const wrapper = panel()
+    await flushPromises()
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(button(wrapper, 'Connect Discord').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('reload rakkio')
+    expect(api.connectDiscord).not.toHaveBeenCalled()
+  })
+
+  it('blocks uncertain consent writes until a fresh status and unchecked choice', async () => {
+    vi.mocked(api.getDiscordStatus).mockResolvedValue({
+      ...connected,
+      connection: { ...connected.connection!, consent_version: '2026-10-31' },
+    })
+    vi.mocked(api.updateDiscordConsent).mockRejectedValue(new Error('Request not confirmed.'))
+    const wrapper = panel()
+    await flushPromises()
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form[aria-label="Update Discord sharing"]').trigger('submit')
+    await flushPromises()
+    expect(button(wrapper, 'Update Discord sharing').attributes('disabled')).toBeDefined()
+    expect(api.updateDiscordConsent).toHaveBeenCalledOnce()
+    await button(wrapper, 'Refresh Discord status').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty('checked', false)
+    expect(api.updateDiscordConsent).toHaveBeenCalledOnce()
+  })
+
+  it('ignores another account’s late sharing acceptance', async () => {
+    vi.mocked(api.getDiscordStatus).mockResolvedValue({
+      ...connected,
+      connection: { ...connected.connection!, consent_version: '2026-10-31' },
+    })
+    let finish: ((value: NonNullable<DiscordStatus['connection']>) => void) | undefined
+    vi.mocked(api.updateDiscordConsent).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const wrapper = panel()
+    await flushPromises()
+    await wrapper.get('input[type="checkbox"]').setValue(true)
+    await wrapper.get('form[aria-label="Update Discord sharing"]').trigger('submit')
+    vi.mocked(api.getDiscordStatus).mockResolvedValue({
+      ...connected,
+      connection: { ...connected.connection!, id: 'new-owner', username: 'Other' },
+    })
+    useWorkspaceStore().user = owner('other')
+    await flushPromises()
+    finish?.(connected.connection!)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Other')
+    expect(wrapper.text()).not.toContain('Calendar events are enabled')
   })
 
   it('confirms disconnect and sends the exact displayed connection identity', async () => {

@@ -1,6 +1,6 @@
 -- One bounded entry per selected calendar event/series. Only sharing fields
 -- are selected; event descriptions, locations and attendees never leave SQL.
-WITH day AS (
+WITH zones AS MATERIALIZED (SELECT name FROM pg_timezone_names), day AS (
     SELECT $3::date AS date,
         $3::date::timestamp AT TIME ZONE $2 AS starts,
         ($3::date + 1)::timestamp AT TIME ZONE $2 AS ends
@@ -9,9 +9,10 @@ WITH day AS (
         e.starts_at, e.ends_at, day.*,
         e.all_day AND e.starts_at AT TIME ZONE 'UTC' = date_trunc('day', e.starts_at AT TIME ZONE 'UTC')
             AND e.ends_at AT TIME ZONE 'UTC' = date_trunc('day', e.ends_at AT TIME ZONE 'UTC') AS floating,
-        COALESCE((SELECT name FROM pg_timezone_names WHERE name=e.timezone), $2) AS zone
+        COALESCE(zones.name, $2) AS zone
     FROM calendar_events e
     JOIN calendars c ON c.id=e.calendar_id AND c.user_id=e.user_id
+    LEFT JOIN zones ON zones.name=e.timezone
     CROSS JOIN day
     WHERE e.user_id=$1 AND c.selected
 ), local AS (

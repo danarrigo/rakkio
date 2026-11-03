@@ -174,12 +174,22 @@ mod tests {
             "2026-11-03T11:00:00Z",
         )
         .await?;
+        seed(
+            &pool,
+            user,
+            calendar,
+            "Ongoing event",
+            "2026-11-01T08:00:00Z",
+            "2026-11-05T09:00:00Z",
+        )
+        .await?;
         let day = NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
         let mut connection = pool.acquire().await?;
         for zone in ["Pacific/Kiritimati", "Etc/GMT+12"] {
             let agenda = events(&mut connection, user, zone, day).await?;
             let text = agenda.lines.join("\n");
             assert!(text.contains("All day `All-day today`"), "{text}");
+            assert!(text.contains("Ongoing event"), "{text}");
             assert!(!text.contains("All-day ended"));
             assert!(!text.contains("All-day tomorrow"));
             if zone == "Pacific/Kiritimati" {
@@ -259,6 +269,36 @@ mod tests {
                 .join("\n");
             assert!(text.contains(present), "{date}: {text}");
             assert!(!text.contains(absent), "{date}: {text}");
+        }
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn linked_days_use_23_and_25_hour_dst_windows(pool: sqlx::PgPool) -> anyhow::Result<()> {
+        let (user, calendar) = fixture(&pool).await?;
+        for (date, last_start, end) in [
+            ("2026-03-08", "2026-03-09T03:30:00Z", "2026-03-09T04:00:00Z"),
+            ("2026-11-01", "2026-11-02T04:30:00Z", "2026-11-02T05:00:00Z"),
+        ] {
+            seed(&pool, user, calendar, "Last half hour", last_start, end).await?;
+            let end: chrono::DateTime<chrono::Utc> = end.parse()?;
+            let next_end = (end + chrono::Duration::minutes(30)).to_rfc3339();
+            seed(
+                &pool,
+                user,
+                calendar,
+                "Next local day",
+                &end.to_rfc3339(),
+                &next_end,
+            )
+            .await?;
+            let mut connection = pool.acquire().await?;
+            let text = events(&mut connection, user, "America/New_York", date.parse()?)
+                .await?
+                .lines
+                .join("\n");
+            assert!(text.contains("Last half hour"), "{text}");
+            assert!(!text.contains("Next local day"), "{text}");
         }
         Ok(())
     }

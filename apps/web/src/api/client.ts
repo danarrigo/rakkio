@@ -18,6 +18,7 @@ import type {
   DiscordStatus,
   DiscordConnectRequest,
   DiscordDisconnectRequest,
+  DiscordConsentRequest,
   FileRecord,
   FileUsage,
   GoogleIntegrationStatus,
@@ -162,6 +163,10 @@ export async function getDiscordStatus(signal?: AbortSignal): Promise<DiscordSta
 
 export async function connectDiscord(body: DiscordConnectRequest, signal?: AbortSignal) {
   return unwrap(await client.POST('/api/v1/integrations/discord/connect', { body, signal }))
+}
+
+export async function updateDiscordConsent(body: DiscordConsentRequest, signal?: AbortSignal) {
+  return unwrap(await client.POST('/api/v1/integrations/discord/consent', { body, signal }))
 }
 
 export async function disconnectDiscord(body: DiscordDisconnectRequest, signal?: AbortSignal) {

@@ -183,6 +183,14 @@ async fn consent_updates_are_owner_connection_and_notice_bound(pool: PgPool) -> 
             "/api/v1/integrations/discord/consent",
             json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION}),
         ),
+        (
+            "/api/v1/integrations/discord/connect",
+            json!({"timezone":"UTC","consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":false}),
+        ),
+        (
+            "/api/v1/integrations/discord/consent",
+            json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":false}),
+        ),
     ] {
         let response = router
             .clone()
