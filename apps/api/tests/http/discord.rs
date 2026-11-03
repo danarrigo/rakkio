@@ -87,6 +87,88 @@ async fn send_transport(
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, _, key, other) = fixture(&pool).await?;
+    let connection = link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    for (user, title, selected, source) in [
+        (DEVELOPMENT_USER_ID, "Owner meeting", true, "native"),
+        (DEVELOPMENT_USER_ID, "Google meeting", true, "google"),
+        (DEVELOPMENT_USER_ID, "Hidden meeting", false, "native"),
+        (other, "Other meeting", true, "native"),
+    ] {
+        let calendar = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO calendars(id,user_id,name,selected,source) VALUES($1,$2,'Agenda',$3,$4)",
+        )
+        .bind(calendar)
+        .bind(user)
+        .bind(selected)
+        .bind(source)
+        .execute(&pool)
+        .await?;
+        sqlx::query("INSERT INTO calendar_events(id,user_id,calendar_id,title,description,location,attendees,starts_at,ends_at,timezone) VALUES($1,$2,$3,$4,'private-description','private-location',ARRAY['private@example.test'],((NOW() AT TIME ZONE 'Asia/Jakarta')::date+TIME '09:00') AT TIME ZONE 'Asia/Jakarta',((NOW() AT TIME ZONE 'Asia/Jakarta')::date+TIME '10:00') AT TIME ZONE 'Asia/Jakarta','Asia/Jakarta')")
+            .bind(Uuid::now_v7()).bind(user).bind(calendar).bind(title).execute(&pool).await?;
+    }
+    send(
+        &router,
+        &key,
+        command(
+            90,
+            "111111111111111111",
+            "add",
+            json!([{"name":"title","value":"Agenda task"},{"name":"due","value":"today"}]),
+        ),
+    )
+    .await?;
+    let old_payload = command(91, "111111111111111111", "today", json!([]));
+    let (_, old) = send(&router, &key, old_payload.clone()).await?;
+    assert!(
+        old["data"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("Agenda task")
+    );
+    assert!(!old.to_string().contains("meeting"));
+    let accepted=router.clone().oneshot(Request::builder().method("POST")
+        .uri("/api/v1/integrations/discord/consent")
+        .header("x-prosepect-user-id",DEVELOPMENT_USER_ID.to_string()).header("content-type","application/json")
+        .body(Body::from(json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION}).to_string()))?).await?;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let (_, agenda) = send(
+        &router,
+        &key,
+        command(92, "111111111111111111", "today", json!([])),
+    )
+    .await?;
+    let text = agenda["data"]["content"].as_str().unwrap();
+    for expected in [
+        "Events",
+        "Tasks",
+        "Owner meeting",
+        "Google meeting",
+        "Agenda task",
+        "09:00",
+        "10:00",
+    ] {
+        assert!(text.contains(expected), "{text}");
+    }
+    for excluded in [
+        "Hidden meeting",
+        "Other meeting",
+        "private-description",
+        "private-location",
+        "private@example.test",
+    ] {
+        assert!(!text.contains(excluded), "{text}");
+    }
+    assert_eq!(agenda["data"]["flags"], 64);
+    assert_eq!(send(&router, &key, old_payload).await?.1, old);
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn relay_gets_committed_reply_without_provider_io_or_duplicate_writes(
     pool: PgPool,
 ) -> anyhow::Result<()> {
