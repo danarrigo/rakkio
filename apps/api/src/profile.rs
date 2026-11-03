@@ -23,6 +23,8 @@ pub struct HandleProfile {
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimHandleRequest {
+    /// Reject a stale form if the signed-in account changed before dispatch.
+    pub expected_user_id: Uuid,
     /// Public, permanent handle: 3-30 ASCII letters, digits or underscores.
     /// Case-insensitive; optional leading @. Cannot be renamed or recycled.
     pub handle: String,
@@ -160,6 +162,11 @@ pub async fn claim_handle(
     CurrentUser(user): CurrentUser,
     ApiJson(request): ApiJson<ClaimHandleRequest>,
 ) -> AppResult<Json<HandleProfile>> {
+    if request.expected_user_id != user {
+        return Err(AppError::Forbidden(
+            "The signed-in account changed. Reload before claiming a handle.",
+        ));
+    }
     state
         .action_rate_limiter
         .check_key(&format!("handle-claim:{user}"))?;

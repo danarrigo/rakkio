@@ -14,7 +14,9 @@ async fn claim(
                 .uri("/api/v1/profile/handle")
                 .header(DEVELOPMENT_USER_HEADER, user.to_string())
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(json!({"handle":handle}).to_string()))?,
+                .body(Body::from(
+                    json!({"handle":handle,"expected_user_id":user}).to_string(),
+                ))?,
         )
         .await?;
     let status = response.status();
@@ -130,6 +132,20 @@ async fn handle_claims_require_auth_csrf_and_strict_valid_input(
             "{value}"
         );
     }
+    let wrong_account = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/profile/handle")
+                .header(DEVELOPMENT_USER_HEADER, owner.to_string())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({"handle":"misbound","expected_user_id":Uuid::now_v7()}).to_string(),
+                ))?,
+        )
+        .await?;
+    assert_eq!(wrong_account.status(), StatusCode::FORBIDDEN);
     let response = router
         .clone()
         .oneshot(
@@ -164,7 +180,7 @@ async fn handle_claims_require_auth_csrf_and_strict_valid_input(
             request()
                 .header("x-csrf-token", session["csrf_token"].as_str().unwrap())
                 .body(Body::from(
-                    json!({"handle":"classmate","user_id":owner}).to_string(),
+                    json!({"handle":"classmate","expected_user_id":session["user"]["id"],"user_id":owner}).to_string(),
                 ))?,
         )
         .await?;
@@ -173,7 +189,10 @@ async fn handle_claims_require_auth_csrf_and_strict_valid_input(
         .oneshot(
             request()
                 .header("x-csrf-token", session["csrf_token"].as_str().unwrap())
-                .body(Body::from(json!({"handle":"classmate"}).to_string()))?,
+                .body(Body::from(
+                    json!({"handle":"classmate","expected_user_id":session["user"]["id"]})
+                        .to_string(),
+                ))?,
         )
         .await?;
     assert_eq!(response.status(), StatusCode::OK);
