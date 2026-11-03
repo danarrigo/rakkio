@@ -16,6 +16,8 @@ use utoipa::OpenApi;
 
 #[path = "http/discord.rs"]
 mod discord;
+#[path = "http/handles.rs"]
+mod handles;
 #[path = "http/rebrand.rs"]
 mod rebrand;
 #[path = "http/security_regressions.rs"]
