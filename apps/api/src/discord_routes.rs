@@ -44,6 +44,13 @@ pub struct DiscordDisconnectRequest {
     pub expected_id: Uuid,
 }
 
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DiscordConsentRequest {
+    pub expected_id: Uuid,
+    pub consent_version: String,
+}
+
 #[derive(Deserialize)]
 pub struct DiscordCallback {
     pub state: String,
@@ -115,6 +122,31 @@ pub async fn connect(
             .map_err(|_| AppError::Validation("Invalid OAuth cookie".into()))?,
     );
     Ok(response)
+}
+
+#[utoipa::path(post,operation_id="discord_update_consent",path="/api/v1/integrations/discord/consent",request_body=DiscordConsentRequest,responses((status=200,body=DiscordConnection),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse),(status=503,body=ErrorResponse)),security(("session_cookie"=[]),("development_user"=[])),tag="discord")]
+pub async fn update_consent(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    ApiJson(request): ApiJson<DiscordConsentRequest>,
+) -> AppResult<Json<DiscordConnection>> {
+    if state.discord.is_none() {
+        return Err(AppError::NotConfigured("Discord"));
+    }
+    if request.consent_version != discord::CONSENT_VERSION {
+        return Err(AppError::Validation(
+            "Review and accept the current Discord data-sharing notice.".into(),
+        ));
+    }
+    state
+        .action_rate_limiter
+        .check_key(&format!("discord-consent:{user}"))?;
+    Ok(Json(
+        state
+            .store
+            .update_discord_consent(user, request.expected_id)
+            .await?,
+    ))
 }
 
 // The callback still requires the initiating signed-in account, not just state.

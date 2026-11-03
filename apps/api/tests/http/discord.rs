@@ -169,6 +169,56 @@ async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn consent_updates_are_owner_connection_and_notice_bound(pool: PgPool) -> anyhow::Result<()> {
+    let (router, store, _, other) = fixture(&pool).await?;
+    let connection = link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    for (user, id, notice, status) in [
+        (
+            other,
+            connection,
+            prosepect_api::discord::CONSENT_VERSION,
+            StatusCode::CONFLICT,
+        ),
+        (
+            DEVELOPMENT_USER_ID,
+            Uuid::now_v7(),
+            prosepect_api::discord::CONSENT_VERSION,
+            StatusCode::CONFLICT,
+        ),
+        (
+            DEVELOPMENT_USER_ID,
+            connection,
+            "2026-10-31",
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/integrations/discord/consent")
+                    .header("x-prosepect-user-id", user.to_string())
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"expected_id":id,"consent_version":notice}).to_string(),
+                    ))?,
+            )
+            .await?;
+        assert_eq!(response.status(), status);
+        assert_eq!(
+            store
+                .discord_connection(DEVELOPMENT_USER_ID)
+                .await?
+                .unwrap()
+                .consent_version,
+            "2026-10-31"
+        );
+    }
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn relay_gets_committed_reply_without_provider_io_or_duplicate_writes(
     pool: PgPool,
 ) -> anyhow::Result<()> {
@@ -701,7 +751,7 @@ async fn linking_requires_csrf_explicit_consent_browser_and_current_owner(
     });
     let router = app::build(&config, store.clone())?;
     let cookie = format!("prosepect_session={}", session.token);
-    let body = json!({"timezone":"Asia/Jakarta","consent_version":"2026-10-31"}).to_string();
+    let body = json!({"timezone":"Asia/Jakarta","consent_version":prosepect_api::discord::CONSENT_VERSION}).to_string();
     let rejected = router
         .clone()
         .oneshot(

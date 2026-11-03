@@ -8,7 +8,7 @@ use reqwest::Url;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-pub const CONSENT_VERSION: &str = "2026-10-31";
+pub const CONSENT_VERSION: &str = "2026-11-03";
 pub const MAX_BODY: usize = 64 * 1024;
 
 #[derive(Clone)]

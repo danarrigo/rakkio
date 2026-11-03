@@ -5,6 +5,7 @@ mod calendar_store;
 pub mod config;
 mod daily_review_store;
 pub mod discord;
+mod discord_agenda;
 pub mod discord_routes;
 mod discord_store;
 pub mod error;
