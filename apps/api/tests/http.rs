@@ -16,6 +16,8 @@ use utoipa::OpenApi;
 
 #[path = "http/discord.rs"]
 mod discord;
+#[path = "http/handles.rs"]
+mod handles;
 #[path = "http/rebrand.rs"]
 mod rebrand;
 #[path = "http/security_regressions.rs"]
@@ -319,7 +321,7 @@ async fn google_login_requires_current_legal_acceptance(pool: PgPool) -> anyhow:
     let accepted = router
         .oneshot(
             Request::builder()
-                .uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-03&age_confirmed=true")
+                .uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-03-handles&age_confirmed=true")
                 .body(Body::empty())?,
         )
         .await?;

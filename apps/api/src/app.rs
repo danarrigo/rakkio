@@ -84,6 +84,8 @@ pub struct AppState {
         description = "Personal productivity API for rakkio"
     ),
     paths(
+        crate::profile::get_handle,
+        crate::profile::claim_handle,
         crate::discord_routes::status,
         crate::discord_routes::connect,
         crate::discord_routes::disconnect,
@@ -170,6 +172,8 @@ pub struct AppState {
         sync_routes::activity
     ),
     components(schemas(
+        crate::profile::HandleProfile,
+        crate::profile::ClaimHandleRequest,
         crate::discord_routes::DiscordStatus,
         crate::discord_routes::DiscordAuthorization,
         crate::discord_routes::DiscordConnectRequest,
@@ -403,6 +407,10 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         .route("/operations", get(operations::snapshot))
         .route("/development/session", post(routes::development_session))
         .route("/session", get(routes::current_session))
+        .route(
+            "/profile/handle",
+            get(crate::profile::get_handle).post(crate::profile::claim_handle),
+        )
         .route("/session/logout", post(routes::logout))
         .route(
             "/settings",

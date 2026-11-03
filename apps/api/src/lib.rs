@@ -28,6 +28,7 @@ pub mod note_routes;
 mod note_store;
 pub mod observability;
 pub mod operations;
+pub mod profile;
 pub mod rate_limit;
 pub mod request_limits;
 pub mod routes;

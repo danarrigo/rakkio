@@ -48,6 +48,8 @@ import type {
   UpdateProjectRequest,
   UpdateTaskRequest,
   UserSettings,
+  HandleProfile,
+  ClaimHandleRequest,
 } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -122,6 +124,17 @@ export async function getSession(signal?: AbortSignal): Promise<SessionResponse>
   signal?.throwIfAborted()
   csrfToken = session.csrf_token
   return session
+}
+
+export async function getHandle(signal?: AbortSignal): Promise<HandleProfile> {
+  return unwrap(await client.GET('/api/v1/profile/handle', { signal, cache: 'no-store' }))
+}
+
+export async function claimHandle(
+  body: ClaimHandleRequest,
+  signal?: AbortSignal,
+): Promise<HandleProfile> {
+  return unwrap(await client.POST('/api/v1/profile/handle', { body, signal }))
 }
 
 export async function logout(): Promise<void> {

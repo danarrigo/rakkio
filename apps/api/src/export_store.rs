@@ -192,6 +192,7 @@ impl Store {
         let discord_connection = sqlx::query_scalar::<_, serde_json::Value>("SELECT jsonb_build_object('discord_user_id',discord_user_id,'username',username,'timezone',timezone,'consent_version',consent_version,'connected_at',connected_at) FROM discord_connections WHERE user_id=$1")
             .bind(user_id).fetch_optional(&self.pool).await?;
         Ok(AccountExport {
+            handle: self.own_handle(user_id).await?.handle,
             discord_connection,
             recurrence_templates,
             saved_task_views,
@@ -223,6 +224,7 @@ impl Store {
 
 #[derive(Serialize)]
 struct AccountExport {
+    handle: Option<String>,
     discord_connection: Option<serde_json::Value>,
     recurrence_templates: Vec<crate::task_recurrence::RecurrenceTemplateExport>,
     saved_task_views: Vec<crate::saved_views::SavedTaskView>,
