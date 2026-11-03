@@ -108,7 +108,8 @@ async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
         .bind(source)
         .execute(&pool)
         .await?;
-        sqlx::query("INSERT INTO calendar_events(id,user_id,calendar_id,title,description,location,attendees,starts_at,ends_at,timezone) VALUES($1,$2,$3,$4,'private-description','private-location',ARRAY['private@example.test'],((NOW() AT TIME ZONE 'Asia/Jakarta')::date+TIME '09:00') AT TIME ZONE 'Asia/Jakarta',((NOW() AT TIME ZONE 'Asia/Jakarta')::date+TIME '10:00') AT TIME ZONE 'Asia/Jakarta','Asia/Jakarta')")
+        // Keep the owner/isolation fixture stable if execution crosses local midnight.
+        sqlx::query("INSERT INTO calendar_events(id,user_id,calendar_id,title,description,location,attendees,starts_at,ends_at,timezone) VALUES($1,$2,$3,$4,'private-description','private-location',ARRAY['private@example.test'],((NOW() AT TIME ZONE 'Asia/Jakarta')::date-1+TIME '09:00') AT TIME ZONE 'Asia/Jakarta',((NOW() AT TIME ZONE 'Asia/Jakarta')::date+2+TIME '10:00') AT TIME ZONE 'Asia/Jakarta','Asia/Jakarta')")
             .bind(Uuid::now_v7()).bind(user).bind(calendar).bind(title).execute(&pool).await?;
     }
     send(
@@ -165,6 +166,22 @@ async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
     }
     assert_eq!(agenda["data"]["flags"], 64);
     assert_eq!(send(&router, &key, old_payload).await?.1, old);
+    sqlx::query(
+        "UPDATE tasks SET status='completed',completed_at=NOW(),version=version+1 WHERE user_id=$1",
+    )
+    .bind(DEVELOPMENT_USER_ID)
+    .execute(&pool)
+    .await?;
+    let (_, events_only) = send(
+        &router,
+        &key,
+        command(93, "111111111111111111", "today", json!([])),
+    )
+    .await?;
+    let text = events_only["data"]["content"].as_str().unwrap();
+    assert!(text.contains("Owner meeting"));
+    assert!(text.contains("No unfinished"));
+    assert!(!text.contains("Agenda task"));
     Ok(())
 }
 
