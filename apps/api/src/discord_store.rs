@@ -19,6 +19,7 @@ pub struct DiscordConnection {
     pub username: String,
     pub timezone: String,
     pub connected_at: DateTime<Utc>,
+    pub consent_version: String,
 }
 
 #[derive(FromRow)]
@@ -26,6 +27,7 @@ pub(crate) struct DiscordAttempt {
     pub user_id: Uuid,
     pub pkce_verifier: String,
     pub timezone: String,
+    pub consent_version: String,
 }
 
 #[derive(FromRow)]
@@ -47,7 +49,7 @@ impl Store {
 
     pub async fn discord_connection(&self, user: Uuid) -> AppResult<Option<DiscordConnection>> {
         Ok(sqlx::query_as(
-            "SELECT id,username,timezone,connected_at FROM discord_connections WHERE user_id=$1",
+            "SELECT id,username,timezone,connected_at,consent_version FROM discord_connections WHERE user_id=$1",
         )
         .bind(user)
         .fetch_optional(&self.pool)
@@ -97,9 +99,9 @@ impl Store {
                 "Too many pending connections. Wait ten minutes before retrying.".into(),
             ));
         }
-        sqlx::query("INSERT INTO discord_oauth_attempts(state_hash,browser_binding_hash,user_id,pkce_verifier,timezone) VALUES($1,$2,$3,$4,$5)")
+        sqlx::query("INSERT INTO discord_oauth_attempts(state_hash,browser_binding_hash,user_id,pkce_verifier,timezone,consent_version) VALUES($1,$2,$3,$4,$5,$6)")
             .bind(Sha256::digest(state).as_slice()).bind(Sha256::digest(browser).as_slice())
-            .bind(user).bind(verifier).bind(timezone).execute(&mut *tx).await?;
+            .bind(user).bind(verifier).bind(timezone).bind(discord::CONSENT_VERSION).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -111,7 +113,7 @@ impl Store {
         browser: &str,
     ) -> AppResult<DiscordAttempt> {
         // Wrong browser or owner cannot consume another account's flow.
-        sqlx::query_as("DELETE FROM discord_oauth_attempts WHERE state_hash=$1 AND browser_binding_hash=$2 AND user_id=$3 AND expires_at>NOW() RETURNING user_id,pkce_verifier,timezone")
+        sqlx::query_as("DELETE FROM discord_oauth_attempts WHERE state_hash=$1 AND browser_binding_hash=$2 AND user_id=$3 AND expires_at>NOW() RETURNING user_id,pkce_verifier,timezone,consent_version")
             .bind(Sha256::digest(state).as_slice()).bind(Sha256::digest(browser).as_slice()).bind(user)
             .fetch_optional(&self.pool).await?.ok_or(AppError::Forbidden("Discord connection expired or belongs to another browser/account"))
     }
@@ -127,7 +129,7 @@ impl Store {
         // replace a connection that completed in another tab.
         let inserted = sqlx::query("INSERT INTO discord_connections(id,user_id,discord_user_id,username,timezone,consent_version) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
             .bind(Uuid::now_v7()).bind(attempt.user_id).bind(identity.id).bind(identity.username)
-            .bind(attempt.timezone).bind(discord::CONSENT_VERSION).execute(&mut *tx).await?;
+            .bind(attempt.timezone).bind(attempt.consent_version).execute(&mut *tx).await?;
         if inserted.rows_affected() != 1 {
             return Err(AppError::Conflict("That Discord or rakkio account is already linked. Disconnect its existing connection first.".into()));
         }
@@ -156,6 +158,20 @@ impl Store {
         Ok(())
     }
 
+    pub async fn update_discord_consent(
+        &self,
+        user: Uuid,
+        expected_id: Uuid,
+    ) -> AppResult<DiscordConnection> {
+        let mut tx = self.pool.begin().await?;
+        Self::lock_task_graph(&mut tx, user).await?;
+        let connection=sqlx::query_as("UPDATE discord_connections SET consent_version=$3 WHERE id=$1 AND user_id=$2 RETURNING id,username,timezone,connected_at,consent_version")
+            .bind(expected_id).bind(user).bind(discord::CONSENT_VERSION).fetch_optional(&mut *tx).await?
+            .ok_or_else(||AppError::Conflict("Discord connection changed. Refresh before accepting the notice.".into()))?;
+        tx.commit().await?;
+        Ok(connection)
+    }
+
     pub(crate) async fn discord_owner(&self, discord_id: &str) -> AppResult<Option<CommandOwner>> {
         Ok(sqlx::query_as(
             "SELECT id,user_id,timezone,connected_at FROM discord_connections WHERE discord_user_id=$1",
@@ -180,9 +196,9 @@ impl Store {
         }
         let mut tx = self.pool.begin().await?;
         Self::lock_task_graph(&mut tx, owner.user_id).await?;
-        let current: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM discord_connections WHERE id=$1 AND user_id=$2 AND discord_user_id=$3)")
-            .bind(owner.id).bind(owner.user_id).bind(interaction.actor()).fetch_one(&mut *tx).await?;
-        if !current {
+        let current: Option<String> = sqlx::query_scalar("SELECT consent_version FROM discord_connections WHERE id=$1 AND user_id=$2 AND discord_user_id=$3")
+            .bind(owner.id).bind(owner.user_id).bind(interaction.actor()).fetch_optional(&mut *tx).await?;
+        if current.is_none() {
             return Ok(message(
                 "Your Discord connection changed. Connect again in rakkio Settings.",
             ));
@@ -214,7 +230,12 @@ impl Store {
         // retaining partial task writes from a failed operation.
         let mut operation = tx.begin().await?;
         let response = match self
-            .discord_operation(&mut operation, &owner, interaction)
+            .discord_operation(
+                &mut operation,
+                &owner,
+                interaction,
+                current.as_deref() == Some(discord::CONSENT_VERSION),
+            )
             .await
         {
             Ok(response) => {
@@ -324,6 +345,7 @@ impl Store {
         connection: &mut PgConnection,
         owner: &CommandOwner,
         interaction: &Interaction,
+        share_events: bool,
     ) -> AppResult<Value> {
         let data = interaction
             .data
@@ -392,18 +414,30 @@ impl Store {
             }
             Some("today") => {
                 let tasks = selected_tasks(connection, owner, true).await?;
-                if tasks.is_empty() {
-                    return Ok(message(format!(
-                        "No unfinished focus, due, overdue, or scheduled tasks today ({}).",
-                        owner.timezone
-                    )));
-                }
-                let mut text = format!("Today ({}) - up to 25 unfinished tasks:\n", owner.timezone);
-                for task in tasks {
-                    text.push_str(&format!("• `{}`\n", plain_title(&task.title, 60)));
-                }
-                text.push_str("Use /done to complete a task. Open rakkio for the full plan.");
-                Ok(message(text))
+                let day: NaiveDate = sqlx::query_scalar("SELECT (NOW() AT TIME ZONE $1)::date")
+                    .bind(&owner.timezone)
+                    .fetch_one(&mut *connection)
+                    .await?;
+                let events = if share_events {
+                    Some(
+                        crate::discord_agenda::events(
+                            connection,
+                            owner.user_id,
+                            &owner.timezone,
+                            day,
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
+                let titles = tasks.into_iter().map(|task| task.title).collect::<Vec<_>>();
+                Ok(crate::discord_agenda::render(
+                    day,
+                    &owner.timezone,
+                    &titles,
+                    events,
+                ))
             }
             Some("done") => {
                 let tasks = selected_tasks(connection, owner, false).await?;
@@ -521,4 +555,48 @@ async fn selected_tasks(
 ) -> AppResult<Vec<Task>> {
     Ok(sqlx::query_as("SELECT tasks.* FROM tasks WHERE user_id=$1 AND status<>'completed' AND (NOT $3 OR (due_at AT TIME ZONE $2)::date <= (NOW() AT TIME ZONE $2)::date OR (scheduled_start AT TIME ZONE $2)::date=(NOW() AT TIME ZONE $2)::date OR EXISTS(SELECT 1 FROM daily_focus_tasks focus WHERE focus.user_id=$1 AND focus.task_id=tasks.id AND focus.focus_date=(NOW() AT TIME ZONE $2)::date)) ORDER BY due_at ASC NULLS LAST,position,id LIMIT 25")
         .bind(owner.user_id).bind(&owner.timezone).bind(today_only).fetch_all(connection).await?)
+}
+
+#[cfg(test)]
+mod consent_tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn oauth_completion_preserves_the_notice_accepted_at_start(
+        pool: sqlx::PgPool,
+    ) -> anyhow::Result<()> {
+        let store = Store::from_pool(pool.clone());
+        let user = Uuid::now_v7();
+        store.ensure_development_user(user).await?;
+        let state = "a".repeat(43);
+        let browser = "b".repeat(43);
+        // Simulate an attempt created by the old API during a rolling deploy.
+        sqlx::query("INSERT INTO discord_oauth_attempts(state_hash,browser_binding_hash,user_id,pkce_verifier,timezone) VALUES($1,$2,$3,'test-verifier','UTC')")
+            .bind(Sha256::digest(&state).as_slice()).bind(Sha256::digest(&browser).as_slice()).bind(user).execute(&pool).await?;
+        let attempt = store.consume_discord_link(user, &state, &browser).await?;
+        assert_eq!(attempt.consent_version, "2026-10-31");
+        store
+            .finish_discord_link(
+                attempt,
+                discord::DiscordIdentity {
+                    id: "123".into(),
+                    username: "Test".into(),
+                },
+            )
+            .await?;
+        let linked = store.discord_connection(user).await?.unwrap();
+        assert_eq!(linked.consent_version, "2026-10-31");
+        store.disconnect_discord(user, linked.id).await?;
+        store
+            .begin_discord_link(user, &state, &browser, "test-verifier", "UTC")
+            .await?;
+        assert_eq!(
+            store
+                .consume_discord_link(user, &state, &browser)
+                .await?
+                .consent_version,
+            discord::CONSENT_VERSION
+        );
+        Ok(())
+    }
 }

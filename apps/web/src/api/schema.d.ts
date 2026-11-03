@@ -468,6 +468,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/discord/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["discord_update_consent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/discord/disconnect": {
         parameters: {
             query?: never;
@@ -1267,15 +1283,23 @@ export interface components {
         };
         DiscordConnectRequest: {
             consent_version: string;
+            share_calendar_events: boolean;
             timezone: string;
         };
         DiscordConnection: {
             /** Format: date-time */
             connected_at: string;
+            consent_version: string;
             /** Format: uuid */
             id: string;
             timezone: string;
             username: string;
+        };
+        DiscordConsentRequest: {
+            consent_version: string;
+            /** Format: uuid */
+            expected_id: string;
+            share_calendar_events: boolean;
         };
         DiscordDisconnectRequest: {
             /** Format: uuid */
@@ -3157,6 +3181,69 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    discord_update_consent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscordConsentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordConnection"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

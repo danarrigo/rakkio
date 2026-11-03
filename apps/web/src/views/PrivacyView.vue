@@ -6,7 +6,7 @@ import PublicPageShell from '../components/PublicPageShell.vue'
   <PublicPageShell
     title="Privacy Policy"
     summary="How rakkio collects, uses, stores, and protects personal data, including information received through Google APIs."
-    last-updated="October 31, 2026"
+    last-updated="November 3, 2026"
   >
     <section>
       <h2>1. Who operates rakkio</h2>
@@ -78,10 +78,13 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         Discord access or refresh tokens after checking your identity.
       </p>
       <p>
-        When you use a command, Discord processes the command and task information you request,
-        including task titles, deadlines, task selections, and completion actions. This may include
-        task information synchronized with Google Tasks or Calendar. Responses are private to the
-        invoking user by default, but Discord still processes that information under its own
+        When you use a command, Discord processes the task and calendar information you request,
+        including task titles, deadlines, task selections, completion actions, and calendar event
+        titles and start/end times. This may include tasks synchronized with Google Tasks or
+        Calendar and events from selected Google calendars. Event descriptions, locations and
+        attendees are not sent. Existing task-only Discord connections do not share events until you
+        accept the updated sharing notice in Settings. Responses are private to the invoking user by
+        default, but Discord still processes that information under its own
         <a href="https://discord.com/privacy">privacy policy</a>. There are no automatic Discord
         reminders or AI processing. Temporary command receipts prevent duplicate changes and keep
         task selections bound to the version you saw.
@@ -169,7 +172,8 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         <li>
           with Discord when you connect your account or request task information and actions through
           Discord commands; this can include task information already synchronized with Google Tasks
-          or Calendar;
+          or Calendar, plus selected calendar event titles and times after your separate sharing
+          acceptance;
         </li>
         <li>when necessary to protect the service or investigate abuse; or</li>
         <li>when required by applicable law.</li>

@@ -23,7 +23,7 @@ function signIn() {
   if (!legalAccepted.value) return
   window.location.assign(
     api.apiUrl(
-      '/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-10-31&age_confirmed=true',
+      '/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-03&age_confirmed=true',
     ),
   )
 }

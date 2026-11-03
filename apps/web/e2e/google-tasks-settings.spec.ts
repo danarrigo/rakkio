@@ -154,7 +154,7 @@ test('Tasks data-use notice links to the updated public disclosures', async ({ p
   await expect(panel).toContainText('not advertising or AI training')
   await panel.getByRole('link', { name: 'Privacy Policy' }).click()
   await expect(page.getByRole('heading', { name: 'Google Tasks data' })).toBeVisible()
-  await expect(page.getByText('October 31, 2026', { exact: false })).toBeVisible()
+  await expect(page.getByText('November 3, 2026', { exact: false })).toBeVisible()
   await page.goto('/terms')
   await expect(
     page.getByText('Google Tasks is separately optional.', { exact: false }),

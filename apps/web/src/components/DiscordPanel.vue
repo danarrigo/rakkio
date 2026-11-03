@@ -31,6 +31,14 @@ function discordUrl(value: string | null | undefined) {
   return undefined
 }
 const installUrl = computed(() => discordUrl(status.value?.install_url))
+// Bind acceptance to the notice shipped in this UI, never a server-supplied future version.
+const noticeVersion = '2026-11-03'
+const noticeCurrent = computed(() => status.value?.consent_version === noticeVersion)
+const needsSharingReview = computed(
+  () => !!status.value?.connection && status.value.connection.consent_version !== noticeVersion,
+)
+const sharingNotice =
+  'I agree to share task titles, deadlines, selections and completion actions, plus calendar event titles and start/end times requested through commands with Discord. This can include tasks synchronized with Google Tasks or Calendar and events from selected Google calendars. Descriptions, locations and attendees are not shared. rakkio stores my Discord identity and command timezone; Discord processes command content under its own privacy policy. Disconnecting does not remove messages already sent.'
 
 function cancel() {
   generation++
@@ -52,11 +60,13 @@ function begin() {
 
 async function refresh() {
   if (!active || busy.value || !store.user) return
+  consent.value = false
   const request = begin()
   loading.value = true
   try {
     const result = await api.getDiscordStatus(request.signal)
     if (!request.current()) return
+    consent.value = false
     status.value = result
     if (result.connection) timezone.value = result.connection.timezone
     stale.value = false
@@ -80,13 +90,20 @@ async function refresh() {
 }
 
 async function connect() {
-  if (!status.value?.configured || !consent.value || busy.value || stale.value) return
+  if (
+    !status.value?.configured ||
+    !noticeCurrent.value ||
+    !consent.value ||
+    busy.value ||
+    stale.value
+  )
+    return
   const request = begin()
   busy.value = true
   error.value = ''
   try {
     const result = await api.connectDiscord(
-      { timezone: timezone.value, consent_version: status.value.consent_version },
+      { timezone: timezone.value, consent_version: noticeVersion, share_calendar_events: true },
       request.signal,
     )
     if (!request.current()) return
@@ -100,6 +117,48 @@ async function connect() {
         cause instanceof Error
           ? `${cause.message} Refresh status before retrying.`
           : 'Connection not confirmed. Refresh status before retrying.'
+    }
+  } finally {
+    if (request.current()) {
+      busy.value = false
+      clearTimeout(timeout)
+    }
+  }
+}
+
+async function updateSharing() {
+  const connection = status.value?.connection
+  if (
+    !connection ||
+    !status.value?.configured ||
+    !noticeCurrent.value ||
+    !needsSharingReview.value ||
+    !consent.value ||
+    busy.value ||
+    stale.value
+  )
+    return
+  const request = begin()
+  busy.value = true
+  error.value = ''
+  try {
+    const result = await api.updateDiscordConsent(
+      { expected_id: connection.id, consent_version: noticeVersion, share_calendar_events: true },
+      request.signal,
+    )
+    if (!request.current()) return
+    if (result.id !== connection.id || result.consent_version !== noticeVersion)
+      throw new Error('Discord connection changed. Refresh status.')
+    status.value = status.value ? { ...status.value, connection: result } : null
+    consent.value = false
+    message.value = 'Calendar events are enabled for /today. No reconnection was needed.'
+  } catch (cause) {
+    if (request.current()) {
+      stale.value = true
+      error.value =
+        cause instanceof Error
+          ? `${cause.message} Refresh status before retrying.`
+          : 'Sharing update not confirmed. Refresh status before retrying.'
     }
   } finally {
     if (request.current()) {
@@ -189,6 +248,13 @@ onBeforeUnmount(() => {
       Checking connection…
     </p>
     <template v-else-if="status">
+      <p
+        v-if="!noticeCurrent && status.configured"
+        role="status"
+        class="mt-4 text-sm text-slate-500"
+      >
+        The Discord sharing notice changed. Save any drafts, then reload rakkio to review it.
+      </p>
       <template v-if="status.connection">
         <p class="mt-4 break-words text-sm">
           Connected as <strong class="font-medium">{{ status.connection.username }}</strong>
@@ -198,9 +264,49 @@ onBeforeUnmount(() => {
         </p>
         <p class="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
           <code>/add title:Finish report due:tomorrow</code> adds a task to Inbox.
-          <code>/today</code> shows your plan. <code>/done</code> lets you choose a task to
+          <code>/today</code> shows your daily agenda. <code>/done</code> lets you choose a task to
           complete.
         </p>
+        <form
+          v-if="status.configured && noticeCurrent && needsSharingReview"
+          class="mt-5 max-w-2xl"
+          aria-label="Update Discord sharing"
+          @submit.prevent="updateSharing"
+        >
+          <p class="text-sm leading-6 text-slate-500 dark:text-slate-400">
+            Your current notice covers tasks only. Calendar events will not be shared until you
+            accept this update. You do not need to disconnect or authorize Discord again.
+          </p>
+          <label class="mt-4 flex items-start gap-3 text-sm leading-6">
+            <input
+              v-model="consent"
+              class="mt-1.5 shrink-0"
+              type="checkbox"
+              :disabled="busy || stale"
+            />
+            <span>{{ sharingNotice }}</span>
+          </label>
+          <p class="mt-3 text-sm">
+            <RouterLink class="underline underline-offset-4" to="/privacy"
+              >Privacy Policy</RouterLink
+            >
+            ·
+            <a
+              class="underline underline-offset-4"
+              href="https://discord.com/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Discord privacy</a
+            >
+          </p>
+          <button
+            class="primary-button mt-4"
+            type="submit"
+            :disabled="busy || stale || loading || !consent"
+          >
+            {{ busy ? 'Working…' : 'Update Discord sharing' }}
+          </button>
+        </form>
         <p v-if="!status.configured" class="mt-3 text-sm text-slate-500 dark:text-slate-400">
           Discord is disabled on this installation. You can still disconnect the saved account link.
         </p>
@@ -249,18 +355,14 @@ onBeforeUnmount(() => {
             :disabled="busy || stale"
           />
           <span>
-            I agree to share task titles, deadlines, selections and completion actions requested
-            through commands with Discord. This can include tasks synchronized with Google Tasks or
-            Calendar. rakkio stores my Discord identity and command timezone; Discord processes
-            command content under its own privacy policy. Disconnecting does not remove messages
-            already sent.
+            {{ sharingNotice }}
           </span>
         </label>
         <div class="mt-5 flex flex-wrap items-center gap-4">
           <button
             class="primary-button"
             type="submit"
-            :disabled="!consent || !timezone.trim() || busy || stale || loading"
+            :disabled="!consent || !timezone.trim() || busy || stale || loading || !noticeCurrent"
           >
             {{ busy ? 'Connecting…' : 'Connect Discord' }}
           </button>

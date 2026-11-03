@@ -22,7 +22,7 @@ COMMANDS = [
              "type": 3, "required": False, "min_length": 1, "max_length": 10},
         ],
     },
-    {"name": "today", "description": "Privately show today's unfinished focus, due and scheduled tasks",
+    {"name": "today", "description": "Privately show today's tasks and selected calendar events",
      "type": 1, "integration_types": [1], "contexts": [0, 1, 2]},
     {"name": "done", "description": "Privately choose a task to complete",
      "type": 1, "integration_types": [1], "contexts": [0, 1, 2]},

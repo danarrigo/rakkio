@@ -87,6 +87,188 @@ async fn send_transport(
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, _, key, other) = fixture(&pool).await?;
+    let connection = link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    for (user, title, selected, source) in [
+        (DEVELOPMENT_USER_ID, "Owner meeting", true, "native"),
+        (DEVELOPMENT_USER_ID, "Google meeting", true, "google"),
+        (DEVELOPMENT_USER_ID, "Hidden meeting", false, "native"),
+        (other, "Other meeting", true, "native"),
+    ] {
+        let calendar = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO calendars(id,user_id,name,selected,source) VALUES($1,$2,'Agenda',$3,$4)",
+        )
+        .bind(calendar)
+        .bind(user)
+        .bind(selected)
+        .bind(source)
+        .execute(&pool)
+        .await?;
+        // Keep the owner/isolation fixture stable if execution crosses local midnight.
+        sqlx::query("INSERT INTO calendar_events(id,user_id,calendar_id,title,description,location,attendees,starts_at,ends_at,timezone) VALUES($1,$2,$3,$4,'private-description','private-location',ARRAY['private@example.test'],((NOW() AT TIME ZONE 'Asia/Jakarta')::date-1+TIME '09:00') AT TIME ZONE 'Asia/Jakarta',((NOW() AT TIME ZONE 'Asia/Jakarta')::date+2+TIME '10:00') AT TIME ZONE 'Asia/Jakarta','Asia/Jakarta')")
+            .bind(Uuid::now_v7()).bind(user).bind(calendar).bind(title).execute(&pool).await?;
+    }
+    send(
+        &router,
+        &key,
+        command(
+            90,
+            "111111111111111111",
+            "add",
+            json!([{"name":"title","value":"Agenda task"},{"name":"due","value":"today"}]),
+        ),
+    )
+    .await?;
+    let old_payload = command(91, "111111111111111111", "today", json!([]));
+    let (_, old) = send(&router, &key, old_payload.clone()).await?;
+    assert!(
+        old["data"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("Agenda task")
+    );
+    assert!(!old.to_string().contains("meeting"));
+    let accepted=router.clone().oneshot(Request::builder().method("POST")
+        .uri("/api/v1/integrations/discord/consent")
+        .header("x-prosepect-user-id",DEVELOPMENT_USER_ID.to_string()).header("content-type","application/json")
+        .body(Body::from(json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":true}).to_string()))?).await?;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let (_, agenda) = send(
+        &router,
+        &key,
+        command(92, "111111111111111111", "today", json!([])),
+    )
+    .await?;
+    let text = agenda["data"]["content"].as_str().unwrap();
+    for expected in [
+        "Events",
+        "Tasks",
+        "Owner meeting",
+        "Google meeting",
+        "Agenda task",
+        "09:00",
+        "10:00",
+    ] {
+        assert!(text.contains(expected), "{text}");
+    }
+    for excluded in [
+        "Hidden meeting",
+        "Other meeting",
+        "private-description",
+        "private-location",
+        "private@example.test",
+    ] {
+        assert!(!text.contains(excluded), "{text}");
+    }
+    assert_eq!(agenda["data"]["flags"], 64);
+    assert_eq!(send(&router, &key, old_payload).await?.1, old);
+    sqlx::query(
+        "UPDATE tasks SET status='completed',completed_at=NOW(),version=version+1 WHERE user_id=$1",
+    )
+    .bind(DEVELOPMENT_USER_ID)
+    .execute(&pool)
+    .await?;
+    let (_, events_only) = send(
+        &router,
+        &key,
+        command(93, "111111111111111111", "today", json!([])),
+    )
+    .await?;
+    let text = events_only["data"]["content"].as_str().unwrap();
+    assert!(text.contains("Owner meeting"));
+    assert!(text.contains("No unfinished"));
+    assert!(!text.contains("Agenda task"));
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn consent_updates_are_owner_connection_and_notice_bound(pool: PgPool) -> anyhow::Result<()> {
+    let (router, store, _, other) = fixture(&pool).await?;
+    let connection = link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    // Old cached UIs used the server's current version with task-only copy.
+    // A new explicit event-sharing acknowledgement is required as well.
+    for (path, body) in [
+        (
+            "/api/v1/integrations/discord/connect",
+            json!({"timezone":"UTC","consent_version":prosepect_api::discord::CONSENT_VERSION}),
+        ),
+        (
+            "/api/v1/integrations/discord/consent",
+            json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION}),
+        ),
+        (
+            "/api/v1/integrations/discord/connect",
+            json!({"timezone":"UTC","consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":false}),
+        ),
+        (
+            "/api/v1/integrations/discord/consent",
+            json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":false}),
+        ),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("x-prosepect-user-id", DEVELOPMENT_USER_ID.to_string())
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    for (user, id, notice, status) in [
+        (
+            other,
+            connection,
+            prosepect_api::discord::CONSENT_VERSION,
+            StatusCode::CONFLICT,
+        ),
+        (
+            DEVELOPMENT_USER_ID,
+            Uuid::now_v7(),
+            prosepect_api::discord::CONSENT_VERSION,
+            StatusCode::CONFLICT,
+        ),
+        (
+            DEVELOPMENT_USER_ID,
+            connection,
+            "2026-10-31",
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/integrations/discord/consent")
+                    .header("x-prosepect-user-id", user.to_string())
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"expected_id":id,"consent_version":notice,"share_calendar_events":true}).to_string(),
+                    ))?,
+            )
+            .await?;
+        assert_eq!(response.status(), status);
+        assert_eq!(
+            store
+                .discord_connection(DEVELOPMENT_USER_ID)
+                .await?
+                .unwrap()
+                .consent_version,
+            "2026-10-31"
+        );
+    }
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn relay_gets_committed_reply_without_provider_io_or_duplicate_writes(
     pool: PgPool,
 ) -> anyhow::Result<()> {
@@ -619,7 +801,11 @@ async fn linking_requires_csrf_explicit_consent_browser_and_current_owner(
     });
     let router = app::build(&config, store.clone())?;
     let cookie = format!("prosepect_session={}", session.token);
-    let body = json!({"timezone":"Asia/Jakarta","consent_version":"2026-10-31"}).to_string();
+    let body = json!({"timezone":"Asia/Jakarta","consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":true}).to_string();
+    let consent_without_csrf=router.clone().oneshot(Request::builder().method("POST")
+        .uri("/api/v1/integrations/discord/consent").header(header::COOKIE,&cookie).header(header::CONTENT_TYPE,"application/json")
+        .body(Body::from(json!({"expected_id":Uuid::now_v7(),"consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":true}).to_string()))?).await?;
+    assert_eq!(consent_without_csrf.status(), StatusCode::FORBIDDEN);
     let rejected = router
         .clone()
         .oneshot(

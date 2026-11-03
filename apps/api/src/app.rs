@@ -87,6 +87,7 @@ pub struct AppState {
         crate::discord_routes::status,
         crate::discord_routes::connect,
         crate::discord_routes::disconnect,
+        crate::discord_routes::update_consent,
         saved_views::list,
         saved_views::create,
         saved_views::delete,
@@ -173,6 +174,7 @@ pub struct AppState {
         crate::discord_routes::DiscordAuthorization,
         crate::discord_routes::DiscordConnectRequest,
         crate::discord_routes::DiscordDisconnectRequest,
+        crate::discord_routes::DiscordConsentRequest,
         crate::discord_store::DiscordConnection,
         crate::google_tasks_store::GoogleTasksStatus,
         crate::google_tasks_store::GoogleTaskRecovery,
@@ -388,6 +390,10 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         .route(
             "/integrations/discord/disconnect",
             post(crate::discord_routes::disconnect),
+        )
+        .route(
+            "/integrations/discord/consent",
+            post(crate::discord_routes::update_consent),
         )
         .route(
             "/auth/discord/callback",

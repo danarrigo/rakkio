@@ -1974,6 +1974,88 @@
         ]
       }
     },
+    "/api/v1/integrations/discord/consent": {
+      "post": {
+        "tags": [
+          "discord"
+        ],
+        "operationId": "discord_update_consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscordConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscordConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
     "/api/v1/integrations/discord/disconnect": {
       "post": {
         "tags": [
@@ -5270,11 +5352,15 @@
         "type": "object",
         "required": [
           "timezone",
-          "consent_version"
+          "consent_version",
+          "share_calendar_events"
         ],
         "properties": {
           "consent_version": {
             "type": "string"
+          },
+          "share_calendar_events": {
+            "type": "boolean"
           },
           "timezone": {
             "type": "string"
@@ -5288,12 +5374,16 @@
           "id",
           "username",
           "timezone",
-          "connected_at"
+          "connected_at",
+          "consent_version"
         ],
         "properties": {
           "connected_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "consent_version": {
+            "type": "string"
           },
           "id": {
             "type": "string",
@@ -5306,6 +5396,27 @@
             "type": "string"
           }
         }
+      },
+      "DiscordConsentRequest": {
+        "type": "object",
+        "required": [
+          "expected_id",
+          "consent_version",
+          "share_calendar_events"
+        ],
+        "properties": {
+          "consent_version": {
+            "type": "string"
+          },
+          "expected_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "share_calendar_events": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
       },
       "DiscordDisconnectRequest": {
         "type": "object",
