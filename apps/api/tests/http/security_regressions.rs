@@ -191,7 +191,7 @@ async fn content_quota_is_an_actionable_error_without_partial_writes(
     Ok(())
 }
 
-const LOGIN_START: &str = "/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-10-31&age_confirmed=true";
+const LOGIN_START: &str = "/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-03&age_confirmed=true";
 
 fn oauth_response(response: &axum::response::Response) -> anyhow::Result<(String, String)> {
     let cookie = response.headers()[header::SET_COOKIE]
@@ -395,7 +395,7 @@ async fn oauth_start_sets_a_short_lived_browser_binding(pool: PgPool) -> anyhow:
     });
     let router = app::build(&config, Store::from_pool(pool))?;
     let response = router.oneshot(Request::builder()
-        .uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-10-31&age_confirmed=true")
+        .uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-03&age_confirmed=true")
         .body(Body::empty())?).await?;
     assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
     let cookie = response

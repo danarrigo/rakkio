@@ -134,7 +134,7 @@ async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
     let accepted=router.clone().oneshot(Request::builder().method("POST")
         .uri("/api/v1/integrations/discord/consent")
         .header("x-prosepect-user-id",DEVELOPMENT_USER_ID.to_string()).header("content-type","application/json")
-        .body(Body::from(json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION}).to_string()))?).await?;
+        .body(Body::from(json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":true}).to_string()))?).await?;
     assert_eq!(accepted.status(), StatusCode::OK);
     let (_, agenda) = send(
         &router,
@@ -172,6 +172,31 @@ async fn today_events_require_explicit_current_consent_and_stay_owner_scoped(
 async fn consent_updates_are_owner_connection_and_notice_bound(pool: PgPool) -> anyhow::Result<()> {
     let (router, store, _, other) = fixture(&pool).await?;
     let connection = link(&pool, DEVELOPMENT_USER_ID, "111111111111111111").await?;
+    // Old cached UIs used the server's current version with task-only copy.
+    // A new explicit event-sharing acknowledgement is required as well.
+    for (path, body) in [
+        (
+            "/api/v1/integrations/discord/connect",
+            json!({"timezone":"UTC","consent_version":prosepect_api::discord::CONSENT_VERSION}),
+        ),
+        (
+            "/api/v1/integrations/discord/consent",
+            json!({"expected_id":connection,"consent_version":prosepect_api::discord::CONSENT_VERSION}),
+        ),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("x-prosepect-user-id", DEVELOPMENT_USER_ID.to_string())
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
     for (user, id, notice, status) in [
         (
             other,
@@ -201,7 +226,7 @@ async fn consent_updates_are_owner_connection_and_notice_bound(pool: PgPool) -> 
                     .header("x-prosepect-user-id", user.to_string())
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        json!({"expected_id":id,"consent_version":notice}).to_string(),
+                        json!({"expected_id":id,"consent_version":notice,"share_calendar_events":true}).to_string(),
                     ))?,
             )
             .await?;
@@ -751,7 +776,11 @@ async fn linking_requires_csrf_explicit_consent_browser_and_current_owner(
     });
     let router = app::build(&config, store.clone())?;
     let cookie = format!("prosepect_session={}", session.token);
-    let body = json!({"timezone":"Asia/Jakarta","consent_version":prosepect_api::discord::CONSENT_VERSION}).to_string();
+    let body = json!({"timezone":"Asia/Jakarta","consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":true}).to_string();
+    let consent_without_csrf=router.clone().oneshot(Request::builder().method("POST")
+        .uri("/api/v1/integrations/discord/consent").header(header::COOKIE,&cookie).header(header::CONTENT_TYPE,"application/json")
+        .body(Body::from(json!({"expected_id":Uuid::now_v7(),"consent_version":prosepect_api::discord::CONSENT_VERSION,"share_calendar_events":true}).to_string()))?).await?;
+    assert_eq!(consent_without_csrf.status(), StatusCode::FORBIDDEN);
     let rejected = router
         .clone()
         .oneshot(

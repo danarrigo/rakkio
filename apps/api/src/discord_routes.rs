@@ -31,6 +31,7 @@ pub struct DiscordStatus {
 pub struct DiscordConnectRequest {
     pub timezone: String,
     pub consent_version: String,
+    pub share_calendar_events: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -49,6 +50,7 @@ pub struct DiscordDisconnectRequest {
 pub struct DiscordConsentRequest {
     pub expected_id: Uuid,
     pub consent_version: String,
+    pub share_calendar_events: bool,
 }
 
 #[derive(Deserialize)]
@@ -79,7 +81,7 @@ pub async fn connect(
     headers: HeaderMap,
     ApiJson(request): ApiJson<DiscordConnectRequest>,
 ) -> AppResult<Response> {
-    if request.consent_version != discord::CONSENT_VERSION {
+    if request.consent_version != discord::CONSENT_VERSION || !request.share_calendar_events {
         return Err(AppError::Validation(
             "Review and accept the current Discord data-sharing notice.".into(),
         ));
@@ -133,7 +135,7 @@ pub async fn update_consent(
     if state.discord.is_none() {
         return Err(AppError::NotConfigured("Discord"));
     }
-    if request.consent_version != discord::CONSENT_VERSION {
+    if request.consent_version != discord::CONSENT_VERSION || !request.share_calendar_events {
         return Err(AppError::Validation(
             "Review and accept the current Discord data-sharing notice.".into(),
         ));
