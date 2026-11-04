@@ -639,6 +639,73 @@ async fn streaming_download_holds_account_admission_until_body_is_consumed_or_dr
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn assignment_pages_separate_open_work_from_closed_history_with_stable_cursors(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (r, _, [owner, _, _, _]) = fixture(&pool).await?;
+    let g = create(&r, owner).await?;
+    let first = publish(&r, owner, &g).await?;
+    let second = publish(&r, owner, &g).await?;
+    let third = publish(&r, owner, &g).await?;
+    let mut body = edit(&second);
+    body["state"] = json!("closed");
+    assert_eq!(
+        call(&r, owner, "PUT", &item(&g, &second), body).await?.0,
+        StatusCode::OK
+    );
+    let open = call(
+        &r,
+        owner,
+        "GET",
+        &format!("{}?limit=1", work(&g)),
+        Value::Null,
+    )
+    .await?
+    .1;
+    assert_eq!(open["items"][0]["id"], third["id"]);
+    assert!(open["next_cursor"].is_string());
+    let next = call(
+        &r,
+        owner,
+        "GET",
+        &format!(
+            "{}?limit=1&cursor={}",
+            work(&g),
+            open["next_cursor"].as_str().unwrap()
+        ),
+        Value::Null,
+    )
+    .await?
+    .1;
+    assert_eq!(next["items"][0]["id"], first["id"]);
+    assert!(next["next_cursor"].is_null());
+    let history = call(
+        &r,
+        owner,
+        "GET",
+        &format!("{}?state=closed", work(&g)),
+        Value::Null,
+    )
+    .await?
+    .1;
+    assert_eq!(history["items"].as_array().unwrap().len(), 1);
+    assert_eq!(history["items"][0]["id"], second["id"]);
+    assert_eq!(
+        call(
+            &r,
+            owner,
+            "GET",
+            &format!("{}?state=invalid", work(&g)),
+            Value::Null
+        )
+        .await?
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn mixed_personal_and_group_content_account_for_final_transaction_net_without_transient_quota_failure(
     pool: PgPool,
 ) -> anyhow::Result<()> {
