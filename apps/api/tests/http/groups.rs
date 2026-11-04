@@ -22,6 +22,16 @@ async fn call(
                 .entry("expected_user_id")
                 .or_insert(json!(user));
         }
+        if matches!(path, "/api/v1/groups" | "/api/v1/groups/join") {
+            body.as_object_mut()
+                .unwrap()
+                .entry("roster_notice_version")
+                .or_insert(json!("2026-11-04"));
+            body.as_object_mut()
+                .unwrap()
+                .entry("confirm_roster_visibility")
+                .or_insert(json!(true));
+        }
         request = request.header(header::CONTENT_TYPE, "application/json");
         Body::from(body.to_string())
     };
@@ -334,7 +344,7 @@ async fn group_roles_direct_invitations_removal_and_ownership_are_scoped(
 async fn code_approval_rechecks_revocation_and_does_not_auto_enroll(
     pool: PgPool,
 ) -> anyhow::Result<()> {
-    let (router, _, [owner, alice, bob, visitor]) = fixture(&pool).await?;
+    let (router, store, [owner, alice, bob, visitor]) = fixture(&pool).await?;
     let group = create(&router, owner).await?;
     let code = invite(&router, owner, &group, "code", None, 2).await?;
     let credential = code["credential"].as_str().unwrap();
@@ -420,6 +430,11 @@ async fn code_approval_rechecks_revocation_and_does_not_auto_enroll(
     let view = detail(&router, owner, &group).await?;
     let request = &view["join_requests"][0];
     assert_ne!(request["id"], old_request["id"]);
+    // Approval preserves the notice accepted when the request began.
+    sqlx::query("UPDATE group_join_requests SET roster_notice_version='2026-11-01' WHERE id=$1")
+        .bind(request["id"].as_str().unwrap().parse::<Uuid>()?)
+        .execute(&pool)
+        .await?;
     let approve = json!({"kind":"review_join","request_id":request["id"],"expected_request_version":request["version"],"approve":true});
     assert_eq!(
         action(&router, owner, &group, approve.clone()).await?.0,
@@ -428,6 +443,11 @@ async fn code_approval_rechecks_revocation_and_does_not_auto_enroll(
     assert_eq!(
         action(&router, owner, &group, approve).await?.0,
         StatusCode::CONFLICT
+    );
+    let exported: Value = serde_json::from_slice(&store.export_json(alice).await?)?;
+    assert_eq!(
+        exported["group_membership_notices"][0]["roster_notice_version"],
+        "2026-11-01"
     );
     assert_eq!(join(&router, bob, &fresh).await?.1["status"], "pending");
     let view = detail(&router, owner, &group).await?;
@@ -517,7 +537,7 @@ async fn final_membership_slot_is_atomic_and_account_deletion_blocks_new_admissi
     let mut group = create(&router, owner).await?;
     group=action(&router,owner,&group,json!({"kind":"update","name":"College class","timezone":"Asia/Jakarta","approval_required":false})).await?.1["group"].clone();
     let id = group["id"].as_str().unwrap().parse::<Uuid>()?;
-    sqlx::query("WITH u AS (INSERT INTO users(id,email,display_name) SELECT gen_random_uuid(),n::text||'@slot.test','' FROM generate_series(1,98) n RETURNING id,'fill'||left(replace(id::text,'-',''),24) AS handle),h AS (INSERT INTO user_handles(handle_hash,user_id,handle) SELECT sha256(convert_to(handle,'UTF8')),id,handle FROM u RETURNING user_id) INSERT INTO group_memberships(id,group_id,user_id) SELECT gen_random_uuid(),$1,user_id FROM h").bind(id).execute(&pool).await?;
+    sqlx::query("WITH u AS (INSERT INTO users(id,email,display_name) SELECT gen_random_uuid(),n::text||'@slot.test','' FROM generate_series(1,98) n RETURNING id,'fill'||left(replace(id::text,'-',''),24) AS handle),h AS (INSERT INTO user_handles(handle_hash,user_id,handle) SELECT sha256(convert_to(handle,'UTF8')),id,handle FROM u RETURNING user_id) INSERT INTO group_memberships(id,group_id,user_id,roster_notice_version) SELECT gen_random_uuid(),$1,user_id,'2026-11-04' FROM h").bind(id).execute(&pool).await?;
     let code = invite(&router, owner, &group, "code", None, 100).await?;
     let (a, b) = tokio::join!(join(&router, alice, &code), join(&router, bob, &code));
     let mut statuses = [a?.0.as_u16(), b?.0.as_u16()];
@@ -558,6 +578,17 @@ async fn group_mutations_bind_actor_cookie_csrf_and_strict_bodies(
     )
     .await?;
     assert_eq!(status, StatusCode::FORBIDDEN);
+    for body in [
+        json!({"name":"Unacknowledged","timezone":"UTC","confirm_roster_visibility":false}),
+        json!({"name":"Future notice","timezone":"UTC","roster_notice_version":"2099-01-01"}),
+    ] {
+        assert_eq!(
+            call(&router, owner, "POST", "/api/v1/groups", body)
+                .await?
+                .0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
     let group = create(&router, owner).await?;
     let (status, _) = call(
         &router,
@@ -596,7 +627,7 @@ async fn group_mutations_bind_actor_cookie_csrf_and_strict_bodies(
             .header(header::COOKIE, &cookie)
             .header(header::CONTENT_TYPE, "application/json")
     };
-    let valid = json!({"expected_user_id":id,"name":"Cookie class","timezone":"UTC"});
+    let valid = json!({"expected_user_id":id,"name":"Cookie class","timezone":"UTC","roster_notice_version":"2026-11-04","confirm_roster_visibility":true});
     let rejected = router
         .clone()
         .oneshot(request().body(Body::from(valid.to_string()))?)

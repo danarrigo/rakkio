@@ -12,6 +12,8 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+pub const ROSTER_NOTICE_VERSION: &str = "2026-11-04";
+
 #[derive(Serialize, ToSchema)]
 pub struct GroupCapability {
     pub enabled: bool,
@@ -95,6 +97,8 @@ pub struct GroupDetail {
 #[serde(deny_unknown_fields)]
 pub struct CreateGroup {
     pub expected_user_id: Uuid,
+    pub roster_notice_version: String,
+    pub confirm_roster_visibility: bool,
     pub name: String,
     pub timezone: String,
 }
@@ -180,6 +184,7 @@ pub struct GroupInviteReference {
 #[serde(deny_unknown_fields)]
 pub struct JoinGroup {
     pub expected_user_id: Uuid,
+    pub roster_notice_version: String,
     pub invitation_id: Option<Uuid>,
     pub credential: Option<String>,
     pub confirm_roster_visibility: bool,

@@ -140,7 +140,7 @@ async fn membership_capacity(
     }
     Ok(())
 }
-async fn activate(c: &mut PgConnection, user: Uuid, group: Uuid) -> AppResult<()> {
+async fn activate(c: &mut PgConnection, user: Uuid, group: Uuid, notice: &str) -> AppResult<()> {
     require_handle(c, user).await?;
     let state = sqlx::query_scalar::<_, String>(
         "SELECT state FROM group_memberships WHERE group_id=$1 AND user_id=$2",
@@ -158,8 +158,8 @@ async fn activate(c: &mut PgConnection, user: Uuid, group: Uuid) -> AppResult<()
         ));
     }
     membership_capacity(c, user, Some(group)).await?;
-    sqlx::query("INSERT INTO group_memberships(id,group_id,user_id) VALUES($1,$2,$3) ON CONFLICT(group_id,user_id) DO UPDATE SET id=EXCLUDED.id,state='active',role='member',share_progress=FALSE,discord_enabled=FALSE,version=group_memberships.version+1")
-        .bind(Uuid::now_v7()).bind(group).bind(user).execute(c).await?;
+    sqlx::query("INSERT INTO group_memberships(id,group_id,user_id,roster_notice_version) VALUES($1,$2,$3,$4) ON CONFLICT(group_id,user_id) DO UPDATE SET id=EXCLUDED.id,state='active',role='member',share_progress=FALSE,discord_enabled=FALSE,version=group_memberships.version+1,joined_at=NOW(),roster_notice_version=EXCLUDED.roster_notice_version")
+        .bind(Uuid::now_v7()).bind(group).bind(user).bind(notice).execute(c).await?;
     Ok(())
 }
 async fn leaders_capacity(c: &mut PgConnection, group: Uuid) -> AppResult<()> {
@@ -212,6 +212,11 @@ impl Store {
         .await?)
     }
     pub async fn create_group(&self, user: Uuid, body: CreateGroup) -> AppResult<GroupSummary> {
+        if !body.confirm_roster_visibility || body.roster_notice_version != ROSTER_NOTICE_VERSION {
+            return Err(AppError::Validation(
+                "Review and confirm the current group roster-sharing notice.".into(),
+            ));
+        }
         self.cleanup_groups().await?;
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT pg_advisory_xact_lock(1886547816,2)")
@@ -240,11 +245,12 @@ impl Store {
             .execute(&mut *tx)
             .await?;
         sqlx::query(
-            "INSERT INTO group_memberships(id,group_id,user_id,role) VALUES($1,$2,$3,'leader')",
+            "INSERT INTO group_memberships(id,group_id,user_id,role,roster_notice_version) VALUES($1,$2,$3,'leader',$4)",
         )
         .bind(Uuid::now_v7())
         .bind(id)
         .bind(user)
+        .bind(body.roster_notice_version)
         .execute(&mut *tx)
         .await?;
         let result = summary(&mut tx, user, id).await?;
@@ -440,7 +446,7 @@ impl Store {
                 approve,
             } => {
                 a.leader(user)?;
-                let (target,invite,version):(Uuid,Uuid,i32)=sqlx::query_as("SELECT user_id,invitation_id,invitation_version FROM group_join_requests WHERE group_id=$1 AND id=$2 AND version=$3 AND state='pending'").bind(id).bind(request_id).bind(expected_request_version).fetch_optional(&mut *tx).await?.ok_or(AppError::Conflict("Join request changed. Refresh before continuing.".into()))?;
+                let (target,invite,version,notice):(Uuid,Uuid,i32,String)=sqlx::query_as("SELECT user_id,invitation_id,invitation_version,roster_notice_version FROM group_join_requests WHERE group_id=$1 AND id=$2 AND version=$3 AND state='pending'").bind(id).bind(request_id).bind(expected_request_version).fetch_optional(&mut *tx).await?.ok_or(AppError::Conflict("Join request changed. Refresh before continuing.".into()))?;
                 if approve {
                     let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_invitations WHERE id=$1 AND group_id=$2 AND version=$3 AND revoked_at IS NULL AND expires_at>NOW() AND uses<max_uses)").bind(invite).bind(id).bind(version).fetch_one(&mut *tx).await?;
                     if !valid {
@@ -448,7 +454,7 @@ impl Store {
                             "The invitation is no longer valid.".into(),
                         ));
                     }
-                    activate(&mut tx, target, id).await?;
+                    activate(&mut tx, target, id, &notice).await?;
                     consume_invite(&mut tx, invite).await?;
                 }
                 sqlx::query("UPDATE group_join_requests SET state=$2,version=version+1,updated_at=NOW() WHERE id=$1").bind(request_id).bind(if approve{"approved"}else{"denied"}).execute(&mut *tx).await?;
@@ -784,7 +790,7 @@ impl Store {
         })
     }
     pub async fn join_group(&self, user: Uuid, body: JoinGroup) -> AppResult<GroupJoinResult> {
-        if !body.confirm_roster_visibility {
+        if !body.confirm_roster_visibility || body.roster_notice_version != ROSTER_NOTICE_VERSION {
             return Err(AppError::Validation(
                 "Review who can see your membership before joining.".into(),
             ));
@@ -829,10 +835,10 @@ impl Store {
             return Err(AppError::NotFound("invitation"));
         }
         let status = if i.kind != "direct" && approval {
-            let previous:Option<(String,bool,Uuid,i32)>=sqlx::query_as("SELECT state,updated_at>NOW()-INTERVAL '10 minutes',invitation_id,invitation_version FROM group_join_requests WHERE group_id=$1 AND user_id=$2").bind(i.group_id).bind(user).fetch_optional(&mut *tx).await?;
+            let previous:Option<(String,bool,Uuid,i32,String)>=sqlx::query_as("SELECT state,updated_at>NOW()-INTERVAL '10 minutes',invitation_id,invitation_version,roster_notice_version FROM group_join_requests WHERE group_id=$1 AND user_id=$2").bind(i.group_id).bind(user).fetch_optional(&mut *tx).await?;
             if previous
                 .as_ref()
-                .is_some_and(|(state, recent, _, _)| state == "denied" && *recent)
+                .is_some_and(|(state, recent, _, _, _)| state == "denied" && *recent)
             {
                 return Err(AppError::Conflict(
                     "Your request was declined recently. Wait before requesting again.".into(),
@@ -840,8 +846,11 @@ impl Store {
             }
             if !previous
                 .as_ref()
-                .is_some_and(|(state, _, invite, version)| {
-                    state == "pending" && *invite == i.id && *version == i.version
+                .is_some_and(|(state, _, invite, version, notice)| {
+                    state == "pending"
+                        && *invite == i.id
+                        && *version == i.version
+                        && *notice == body.roster_notice_version
                 })
             {
                 if previous.is_none() {
@@ -857,12 +866,12 @@ impl Store {
                         ));
                     }
                 }
-                sqlx::query("INSERT INTO group_join_requests(id,group_id,user_id,invitation_id,invitation_version) VALUES($1,$2,$3,$4,$5) ON CONFLICT(group_id,user_id) DO UPDATE SET id=EXCLUDED.id,invitation_id=EXCLUDED.invitation_id,invitation_version=EXCLUDED.invitation_version,state='pending',version=group_join_requests.version+1,updated_at=NOW()")
-                    .bind(Uuid::now_v7()).bind(i.group_id).bind(user).bind(i.id).bind(i.version).execute(&mut *tx).await?;
+                sqlx::query("INSERT INTO group_join_requests(id,group_id,user_id,invitation_id,invitation_version,roster_notice_version) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(group_id,user_id) DO UPDATE SET id=EXCLUDED.id,invitation_id=EXCLUDED.invitation_id,invitation_version=EXCLUDED.invitation_version,roster_notice_version=EXCLUDED.roster_notice_version,state='pending',version=group_join_requests.version+1,updated_at=NOW()")
+                    .bind(Uuid::now_v7()).bind(i.group_id).bind(user).bind(i.id).bind(i.version).bind(&body.roster_notice_version).execute(&mut *tx).await?;
             }
             "pending"
         } else {
-            activate(&mut tx, user, i.group_id).await?;
+            activate(&mut tx, user, i.group_id, &body.roster_notice_version).await?;
             consume_invite(&mut tx, i.id).await?;
             sqlx::query("DELETE FROM group_join_requests WHERE group_id=$1 AND user_id=$2")
                 .bind(i.group_id)
