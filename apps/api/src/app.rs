@@ -85,6 +85,17 @@ pub struct AppState {
         description = "Personal productivity API for rakkio"
     ),
     paths(
+        crate::group_assignments::list,
+        crate::group_assignments::create,
+        crate::group_assignments::update,
+        crate::group_assignments::complete,
+        crate::group_assignments::report,
+        crate::group_assignments::preferences,
+        crate::group_assignments::share,
+        crate::group_assignments::delete,
+        crate::group_assignments::restore,
+        crate::group_assignments::undos,
+        crate::group_assignments::usage,
         crate::groups::capability,
         crate::groups::list,
         crate::groups::create,
@@ -184,6 +195,20 @@ pub struct AppState {
         sync_routes::activity
     ),
     components(schemas(
+        crate::group_assignments::AssignmentProgress,
+        crate::group_assignments::GroupAssignment,
+        crate::group_assignments::GroupAssignmentPage,
+        crate::group_assignments::CreateGroupAssignment,
+        crate::group_assignments::UpdateGroupAssignment,
+        crate::group_assignments::GroupAssignmentVersion,
+        crate::group_assignments::UpdateAssignmentProgress,
+        crate::group_assignments::GroupProgressPreferences,
+        crate::group_assignments::UpdateGroupProgressPreferences,
+        crate::group_assignments::SharedAssignmentProgress,
+        crate::group_assignments::AssignmentProgressReport,
+        crate::group_assignments::GroupAssignmentUndo,
+        crate::group_assignments::GroupAssignmentUndoPage,
+        crate::group_assignments::GroupContentUsage,
         crate::groups::GroupCapability,
         crate::groups::GroupSummary,
         crate::groups::GroupMember,
@@ -420,6 +445,42 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
     };
 
     let api = Router::new()
+        .route(
+            "/groups/{group_id}/assignments",
+            get(crate::group_assignments::list).post(crate::group_assignments::create),
+        )
+        .route(
+            "/groups/{group_id}/assignments/{assignment_id}",
+            put(crate::group_assignments::update),
+        )
+        .route(
+            "/groups/{group_id}/assignments/{assignment_id}/progress",
+            post(crate::group_assignments::complete),
+        )
+        .route(
+            "/groups/{group_id}/assignments/{assignment_id}/progress-report",
+            get(crate::group_assignments::report),
+        )
+        .route(
+            "/groups/{group_id}/assignments/{assignment_id}/delete-with-undo",
+            post(crate::group_assignments::delete),
+        )
+        .route(
+            "/groups/{group_id}/assignments/{assignment_id}/restore",
+            post(crate::group_assignments::restore),
+        )
+        .route(
+            "/groups/{group_id}/assignment-undos",
+            get(crate::group_assignments::undos),
+        )
+        .route(
+            "/groups/{group_id}/preferences",
+            get(crate::group_assignments::preferences).post(crate::group_assignments::share),
+        )
+        .route(
+            "/groups/{group_id}/content-usage",
+            get(crate::group_assignments::usage),
+        )
         .route("/groups/capability", get(crate::groups::capability))
         .route(
             "/groups",

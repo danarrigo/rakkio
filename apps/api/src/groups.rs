@@ -201,13 +201,13 @@ pub struct GroupJoinResult {
     pub group_id: Uuid,
 }
 
-fn available(state: &AppState) -> AppResult<()> {
+pub(crate) fn available(state: &AppState) -> AppResult<()> {
     if !state.groups_enabled {
         return Err(AppError::NotConfigured("Groups"));
     }
     Ok(())
 }
-fn mutation(state: &AppState, user: Uuid, expected: Uuid) -> AppResult<()> {
+pub(crate) fn mutation(state: &AppState, user: Uuid, expected: Uuid) -> AppResult<()> {
     available(state)?;
     if user != expected {
         return Err(AppError::Forbidden(

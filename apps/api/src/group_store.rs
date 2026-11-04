@@ -15,12 +15,14 @@ macro_rules! invitation_sql { ($suffix:literal) => { concat!("SELECT i.id,i.grou
 macro_rules! member_sql { ($suffix:literal) => { concat!("SELECT m.id,m.user_id,h.handle,LEFT(u.display_name,120) AS display_name,CASE WHEN g.owner_id=m.user_id THEN 'owner' ELSE m.role END AS role,m.state,m.version FROM group_memberships m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id JOIN user_handles h ON h.user_id=m.user_id",$suffix) }; }
 
 #[derive(FromRow)]
-struct Access {
+pub(crate) struct Access {
     owner_id: Uuid,
     version: i32,
     deleted_at: Option<DateTime<Utc>>,
     my_role: String,
-    my_membership_id: Uuid,
+    pub(crate) my_membership_id: Uuid,
+    pub(crate) timezone: String,
+    pub(crate) membership_epoch: i64,
 }
 impl Access {
     fn owner(&self, user: Uuid) -> AppResult<()> {
@@ -29,7 +31,7 @@ impl Access {
         }
         Ok(())
     }
-    fn leader(&self, user: Uuid) -> AppResult<()> {
+    pub(crate) fn leader(&self, user: Uuid) -> AppResult<()> {
         if self.owner_id != user && self.my_role != "leader" {
             return Err(AppError::Forbidden("A group leader is required."));
         }
@@ -44,7 +46,11 @@ impl Access {
         Ok(())
     }
 }
-async fn lock_users(c: &mut PgConnection, actor: Uuid, mut users: Vec<Uuid>) -> AppResult<()> {
+pub(crate) async fn lock_users(
+    c: &mut PgConnection,
+    actor: Uuid,
+    mut users: Vec<Uuid>,
+) -> AppResult<()> {
     users.push(actor);
     users.sort();
     users.dedup();
@@ -81,7 +87,26 @@ async fn lock_users(c: &mut PgConnection, actor: Uuid, mut users: Vec<Uuid>) -> 
     Ok(())
 }
 async fn access(c: &mut PgConnection, user: Uuid, group: Uuid) -> AppResult<Access> {
-    sqlx::query_as("SELECT g.owner_id,g.version,g.deleted_at,m.role AS my_role,m.id AS my_membership_id FROM groups g JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active' WHERE g.id=$2 AND (g.deleted_at IS NULL OR g.owner_id=$1) FOR UPDATE OF g")
+    sqlx::query_as("SELECT g.owner_id,g.version,g.deleted_at,g.timezone,g.membership_epoch,m.role AS my_role,m.id AS my_membership_id FROM groups g JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active' WHERE g.id=$2 AND (g.deleted_at IS NULL OR g.owner_id=$1) FOR UPDATE OF g")
+        .bind(user).bind(group).fetch_optional(c).await?.ok_or(AppError::NotFound("group"))
+}
+pub(crate) async fn write_access(
+    c: &mut PgConnection,
+    user: Uuid,
+    group: Uuid,
+) -> AppResult<Access> {
+    let a = access(c, user, group).await?;
+    if a.deleted_at.is_some() {
+        return Err(AppError::NotFound("group"));
+    }
+    Ok(a)
+}
+pub(crate) async fn read_access(
+    c: &mut PgConnection,
+    user: Uuid,
+    group: Uuid,
+) -> AppResult<Access> {
+    sqlx::query_as("SELECT g.owner_id,g.version,g.deleted_at,g.timezone,g.membership_epoch,m.role AS my_role,m.id AS my_membership_id FROM groups g JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active' WHERE g.id=$2 AND g.deleted_at IS NULL")
         .bind(user).bind(group).fetch_optional(c).await?.ok_or(AppError::NotFound("group"))
 }
 async fn summary(c: &mut PgConnection, user: Uuid, group: Uuid) -> AppResult<GroupSummary> {
@@ -207,6 +232,7 @@ impl Store {
     pub(crate) async fn cleanup_groups(&self) -> AppResult<()> {
         sqlx::query("DELETE FROM groups WHERE id IN (SELECT id FROM groups WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 25 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_invitations WHERE id IN (SELECT id FROM group_invitations WHERE expires_at<=NOW() OR revoked_at<NOW()-INTERVAL '15 minutes' ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
+        sqlx::query("DELETE FROM group_assignments WHERE id IN (SELECT id FROM group_assignments WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_ownership_offers WHERE expires_at<=NOW()")
             .execute(&self.pool)
             .await?;

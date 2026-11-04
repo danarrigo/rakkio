@@ -234,9 +234,12 @@ impl Store {
         let recurrence_templates = self.recurrence_templates(user_id).await?;
         let discord_connection = sqlx::query_scalar::<_, serde_json::Value>("SELECT jsonb_build_object('discord_user_id',discord_user_id,'username',username,'timezone',timezone,'consent_version',consent_version,'connected_at',connected_at) FROM discord_connections WHERE user_id=$1")
             .bind(user_id).fetch_optional(&self.pool).await?;
-        let group_membership_notices=sqlx::query_scalar::<_,serde_json::Value>("SELECT jsonb_build_object('membership_id',id,'group_id',group_id,'state',state,'joined_at',joined_at,'roster_notice_version',roster_notice_version,'share_progress',share_progress,'discord_enabled',discord_enabled) FROM group_memberships WHERE user_id=$1 ORDER BY group_id")
+        let group_membership_notices=sqlx::query_scalar::<_,serde_json::Value>("SELECT jsonb_build_object('membership_id',id,'group_id',group_id,'state',state,'joined_at',joined_at,'roster_notice_version',roster_notice_version,'share_progress',share_progress,'progress_notice_version',progress_notice_version,'progress_shared_at',progress_shared_at,'discord_enabled',discord_enabled) FROM group_memberships WHERE user_id=$1 ORDER BY group_id")
+            .bind(user_id).fetch_all(&self.pool).await?;
+        let group_assignment_progress=sqlx::query_scalar::<_,serde_json::Value>("SELECT to_jsonb(p)-'membership_state' FROM group_assignment_progress p JOIN groups g ON g.id=p.group_id WHERE p.user_id=$1 AND g.deleted_at IS NULL ORDER BY p.group_id,p.assignment_id")
             .bind(user_id).fetch_all(&self.pool).await?;
         Ok(AccountExport {
+            group_assignment_progress,
             group_membership_notices,
             groups: self.list_groups(user_id).await?,
             handle: self.own_handle(user_id).await?.handle,
@@ -271,6 +274,7 @@ impl Store {
 
 #[derive(Serialize)]
 struct AccountExport {
+    group_assignment_progress: Vec<serde_json::Value>,
     group_membership_notices: Vec<serde_json::Value>,
     groups: Vec<crate::groups::GroupSummary>,
     handle: Option<String>,
