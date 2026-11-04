@@ -512,13 +512,47 @@ async fn group_content_reservations_serialize_at_global_limit_and_full_group_pur
             .await?,
         2
     );
-    let winning = if a.0 == StatusCode::OK { &g } else { &h };
+    let (actor, winning, assignment, remaining) = if a.0 == StatusCode::OK {
+        (owner, &g, &a.1, &h)
+    } else {
+        (bob, &h, &b.1, &g)
+    };
+    assert_eq!(
+        progress(&r, actor, winning, assignment, true).await?.0,
+        StatusCode::OK
+    );
     let gid: Uuid = winning["id"].as_str().unwrap().parse()?;
     // Simulate the bounded purge after an explicitly approved group deletion.
     sqlx::query("DELETE FROM groups WHERE id=$1")
         .bind(gid)
         .execute(&pool)
         .await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT records FROM workspace_content_total")
+            .fetch_one(&pool)
+            .await?,
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT bytes FROM workspace_content_total")
+            .fetch_one(&pool)
+            .await?,
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM group_assignment_progress")
+            .fetch_one(&pool)
+            .await?,
+        0
+    );
+    let remaining_id = remaining["id"].as_str().unwrap().parse::<Uuid>()?;
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO group_assignments(id,group_id,title,timezone) VALUES($1,$2,'Uncommitted work','UTC')").bind(Uuid::now_v7()).bind(remaining_id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM groups WHERE id=$1")
+        .bind(remaining_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT records FROM workspace_content_total")
             .fetch_one(&pool)

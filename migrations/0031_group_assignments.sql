@@ -98,6 +98,21 @@ BEGIN
     ON CONFLICT(transaction_id,group_id) DO UPDATE
     SET byte_delta=pending.byte_delta+EXCLUDED.byte_delta,record_delta=pending.record_delta+EXCLUDED.record_delta;
 END $$;
+-- Cascades can remove both memberships and definitions before their AFTER
+-- triggers observe one another. Release the scope's committed counter once,
+-- overriding any uncommitted additions instead of guessing cascade order.
+CREATE FUNCTION release_deleted_group_content() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE used_bytes BIGINT; used_records BIGINT;
+BEGIN
+    SELECT COALESCE(SUM(u.bytes),0),COALESCE(SUM(u.records),0) INTO used_bytes,used_records
+        FROM group_content_usage u WHERE u.group_id=OLD.id;
+    INSERT INTO group_content_pending AS pending VALUES(pg_current_xact_id(),OLD.id,-used_bytes,-used_records)
+    ON CONFLICT(transaction_id,group_id) DO UPDATE
+        SET byte_delta=EXCLUDED.byte_delta,record_delta=EXCLUDED.record_delta;
+    RETURN OLD;
+END $$;
+CREATE TRIGGER release_deleted_group_content BEFORE DELETE ON groups
+    FOR EACH ROW EXECUTE FUNCTION release_deleted_group_content();
 -- 256 fixed lifecycle bytes cover versions/state/tombstones so closing/deleting
 -- does not need new capacity. Variable content remains billed by serialized size.
 CREATE FUNCTION group_definition_bytes(value JSONB) RETURNS BIGINT LANGUAGE SQL IMMUTABLE AS $$
@@ -110,6 +125,9 @@ BEGIN
     IF TG_OP='DELETE' THEN group_key:=OLD.group_id; ELSE group_key:=NEW.group_id; END IF;
     IF TG_OP='UPDATE' AND (NEW.group_id<>OLD.group_id OR NEW.id<>OLD.id) THEN
         RAISE EXCEPTION 'assignment identity cannot change' USING ERRCODE='23514';
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM groups WHERE id=group_key) THEN
+        IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW;
     END IF;
     SELECT COUNT(*) INTO members FROM group_memberships WHERE group_id=group_key AND state='active';
     IF TG_OP='INSERT' THEN
@@ -136,7 +154,7 @@ BEGIN
         END IF;
         group_key:=NEW.group_id;member_delta:=(NEW.state='active')::INTEGER-(OLD.state='active')::INTEGER;
     END IF;
-    IF member_delta<>0 THEN
+    IF member_delta<>0 AND EXISTS(SELECT 1 FROM groups WHERE id=group_key) THEN
         SELECT COUNT(*) INTO assignments FROM group_assignments WHERE group_id=group_key;
         PERFORM queue_group_content(group_key,member_delta*assignments*512,member_delta*assignments);
     END IF;
