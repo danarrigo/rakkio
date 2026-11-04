@@ -1,5 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// Synthetic browser-interception fixture, never issued by a live service.
+const MOCK_JOIN_CODE = 'ABCD2345EFGH'
+
 async function fixture(
   page: Page,
   options: { enabled?: boolean; member?: boolean; guest?: boolean; empty?: boolean } = {},
@@ -158,7 +161,7 @@ async function fixture(
             input.kind === 'direct'
               ? null
               : input.kind === 'code'
-                ? 'ABCD2345EFGH'
+                ? MOCK_JOIN_CODE
                 : 'a'.repeat(43),
         }
       } else if (path === '/groups/class/actions') {
@@ -294,7 +297,7 @@ test('leaders invite by handle, code and one-time link without enrolling recipie
   await form.getByRole('combobox', { name: 'Invitation type' }).selectOption('code')
   await form.getByRole('button', { name: 'Create invitation' }).click()
   await expect(page.getByRole('textbox', { name: 'Copy now - only shown once' })).toHaveValue(
-    'ABCD2345EFGH',
+    MOCK_JOIN_CODE,
   )
   await form.getByRole('combobox', { name: 'Invitation type' }).selectOption('link')
   await form.getByRole('button', { name: 'Create invitation' }).click()
@@ -328,7 +331,7 @@ test('members cannot see management controls and joining requires roster acknowl
   await expect(panel.getByRole('status')).toContainText('awaiting leader approval')
   await expect(page.getByText('Awaiting approval', { exact: true })).toBeVisible()
   expect(state.writes.find((write) => write.path === '/groups/join')?.body).toEqual({
-    credential: 'ABCD2345EFGH',
+    credential: MOCK_JOIN_CODE,
     expected_user_id: 'student',
     confirm_roster_visibility: true,
     roster_notice_version: '2026-11-04',

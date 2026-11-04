@@ -4,3 +4,6 @@
 640acc0275af8e699d193397aa040c6f692522e0:apps/api/tests/http.rs:generic-api-key:170
 # Synthetic public Discord application ID (123456789012345678), not a credential.
 20f6758d054bc5b46ade90d9f2dec08878b9fde9:scripts/personal/test_personal.py:discord-client-id:80
+# Synthetic join-code literal in an intercepted browser fixture, never issued live.
+# Current tests reuse a named fixture constant; only this historical occurrence is ignored.
+69f06b9403be7f6d21a0d5f058359f5d89220102:apps/web/e2e/groups.spec.ts:generic-api-key:331
