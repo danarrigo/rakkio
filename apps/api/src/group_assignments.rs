@@ -10,10 +10,33 @@ use axum::{Json, extract::State};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 pub const PROGRESS_NOTICE_VERSION: &str = "2026-11-04-progress";
+#[derive(Default, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupAssignmentFilter {
+    #[default]
+    Open,
+    Closed,
+}
+impl GroupAssignmentFilter {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+        }
+    }
+}
+#[derive(Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
+pub struct GroupAssignmentQuery {
+    pub cursor: Option<Uuid>,
+    pub limit: Option<i64>,
+    #[serde(default)]
+    pub state: GroupAssignmentFilter,
+}
 #[derive(Serialize, ToSchema)]
 pub struct AssignmentProgress {
     pub completed_at: Option<DateTime<Utc>>,
@@ -126,12 +149,12 @@ pub struct GroupContentUsage {
     pub max_records: i64,
 }
 
-#[utoipa::path(get,operation_id="group_assignments_list",path="/api/v1/groups/{group_id}/assignments",params(("group_id"=Uuid,Path),PageQuery),responses((status=200,body=GroupAssignmentPage),(status=401,body=ErrorResponse),(status=404,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(get,operation_id="group_assignments_list",path="/api/v1/groups/{group_id}/assignments",params(("group_id"=Uuid,Path),GroupAssignmentQuery),responses((status=200,body=GroupAssignmentPage),(status=401,body=ErrorResponse),(status=404,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn list(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
     ApiPath(id): ApiPath<Uuid>,
-    ApiQuery(page): ApiQuery<PageQuery>,
+    ApiQuery(page): ApiQuery<GroupAssignmentQuery>,
 ) -> AppResult<Json<GroupAssignmentPage>> {
     groups::available(&state)?;
     Ok(Json(state.store.group_assignments(user, id, page).await?))

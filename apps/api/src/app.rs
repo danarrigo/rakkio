@@ -195,6 +195,7 @@ pub struct AppState {
         sync_routes::activity
     ),
     components(schemas(
+        crate::group_assignments::GroupAssignmentFilter,
         crate::group_assignments::AssignmentProgress,
         crate::group_assignments::GroupAssignment,
         crate::group_assignments::GroupAssignmentPage,

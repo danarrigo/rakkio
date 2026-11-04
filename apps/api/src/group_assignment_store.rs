@@ -163,16 +163,20 @@ impl Store {
         &self,
         user: Uuid,
         group: Uuid,
-        page: PageQuery,
+        page: GroupAssignmentQuery,
     ) -> AppResult<GroupAssignmentPage> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
             .execute(&mut *tx)
             .await?;
         let a = read_access(&mut tx, user, group).await?;
-        let limit = page.normalized_limit();
-        let mut rows:Vec<AssignmentRow>=sqlx::query_as(assignment_sql!(" WHERE a.group_id=$2 AND a.deleted_at IS NULL AND ($3::uuid IS NULL OR a.id>$3) ORDER BY a.id LIMIT $4"))
-            .bind(a.my_membership_id).bind(group).bind(page.cursor).bind(limit+1).fetch_all(&mut *tx).await?;
+        let limit = PageQuery {
+            cursor: page.cursor,
+            limit: page.limit,
+        }
+        .normalized_limit();
+        let mut rows:Vec<AssignmentRow>=sqlx::query_as(assignment_sql!(" WHERE a.group_id=$2 AND a.deleted_at IS NULL AND a.state=$5 AND ($3::uuid IS NULL OR a.id<$3) ORDER BY a.id DESC LIMIT $4"))
+            .bind(a.my_membership_id).bind(group).bind(page.cursor).bind(limit+1).bind(page.state.as_str()).fetch_all(&mut *tx).await?;
         let more = rows.len() as i64 > limit;
         if more {
             rows.pop();
