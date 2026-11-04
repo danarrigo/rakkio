@@ -543,3 +543,83 @@ async fn final_membership_slot_is_atomic_and_account_deletion_blocks_new_admissi
     assert_eq!(store.user_profile(visitor).await?.id, visitor);
     Ok(())
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn group_mutations_bind_actor_cookie_csrf_and_strict_bodies(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, store, [owner, alice, _, _]) = fixture(&pool).await?;
+    let (status, _) = call(
+        &router,
+        owner,
+        "POST",
+        "/api/v1/groups",
+        json!({"expected_user_id":alice,"name":"Wrong account","timezone":"UTC"}),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let group = create(&router, owner).await?;
+    let (status, _) = call(
+        &router,
+        alice,
+        "POST",
+        &format!(
+            "/api/v1/groups/{}/invitations",
+            group["id"].as_str().unwrap()
+        ),
+        json!({"expected_version":group["version"],"kind":"direct","handle":"bob","max_uses":1}),
+    )
+    .await?;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let session = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/development/session")
+                .body(Body::empty())?,
+        )
+        .await?;
+    let cookie = session.headers()[header::SET_COOKIE]
+        .to_str()?
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let session: Value = serde_json::from_slice(&to_bytes(session.into_body(), 65536).await?)?;
+    let id: Uuid = session["user"]["id"].as_str().unwrap().parse()?;
+    store.claim_handle(id, "cookie_member").await?;
+    let request = || {
+        Request::builder()
+            .method("POST")
+            .uri("/api/v1/groups")
+            .header(header::COOKIE, &cookie)
+            .header(header::CONTENT_TYPE, "application/json")
+    };
+    let valid = json!({"expected_user_id":id,"name":"Cookie class","timezone":"UTC"});
+    let rejected = router
+        .clone()
+        .oneshot(request().body(Body::from(valid.to_string()))?)
+        .await?;
+    assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+    let mut invalid = valid.clone();
+    invalid["owner_id"] = json!(owner);
+    let rejected = router
+        .clone()
+        .oneshot(
+            request()
+                .header("x-csrf-token", session["csrf_token"].as_str().unwrap())
+                .body(Body::from(invalid.to_string()))?,
+        )
+        .await?;
+    assert_eq!(rejected.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let response = router
+        .oneshot(
+            request()
+                .header("x-csrf-token", session["csrf_token"].as_str().unwrap())
+                .body(Body::from(valid.to_string()))?,
+        )
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    Ok(())
+}

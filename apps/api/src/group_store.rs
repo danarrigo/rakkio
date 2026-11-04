@@ -8,9 +8,11 @@ use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgConnection};
 use uuid::Uuid;
 
-const SUMMARY: &str = "SELECT g.id,g.owner_id,g.name,g.timezone,g.approval_required,g.version,CASE WHEN g.owner_id=$1 THEN 'owner' ELSE m.role END AS my_role,m.id AS my_membership_id,m.version AS my_membership_version,(SELECT COUNT(*) FROM group_memberships c WHERE c.group_id=g.id AND c.state='active') AS member_count,g.deleted_at,g.undo_until FROM groups g JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active'";
-const INVITATION: &str = "SELECT i.id,i.group_id,g.name AS group_name,i.kind,h.handle AS recipient_handle,i.expires_at,i.max_uses,i.uses,i.version FROM group_invitations i JOIN groups g ON g.id=i.group_id LEFT JOIN user_handles h ON h.user_id=i.recipient_id";
-const MEMBER: &str = "SELECT m.id,m.user_id,h.handle,LEFT(u.display_name,120) AS display_name,CASE WHEN g.owner_id=m.user_id THEN 'owner' ELSE m.role END AS role,m.state,m.version FROM group_memberships m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id JOIN user_handles h ON h.user_id=m.user_id";
+// Compile-time literal composition preserves SQLx's static-query safety check.
+// Only fixed projection/suffix strings belong here; all data uses bind values.
+macro_rules! summary_sql { ($suffix:literal) => { concat!("SELECT g.id,g.owner_id,g.name,g.timezone,g.approval_required,g.version,CASE WHEN g.owner_id=$1 THEN 'owner' ELSE m.role END AS my_role,m.id AS my_membership_id,m.version AS my_membership_version,(SELECT COUNT(*) FROM group_memberships c WHERE c.group_id=g.id AND c.state='active') AS member_count,g.deleted_at,g.undo_until FROM groups g JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active'",$suffix) }; }
+macro_rules! invitation_sql { ($suffix:literal) => { concat!("SELECT i.id,i.group_id,g.name AS group_name,i.kind,h.handle AS recipient_handle,i.expires_at,i.max_uses,i.uses,i.version FROM group_invitations i JOIN groups g ON g.id=i.group_id LEFT JOIN user_handles h ON h.user_id=i.recipient_id",$suffix) }; }
+macro_rules! member_sql { ($suffix:literal) => { concat!("SELECT m.id,m.user_id,h.handle,LEFT(u.display_name,120) AS display_name,CASE WHEN g.owner_id=m.user_id THEN 'owner' ELSE m.role END AS role,m.state,m.version FROM group_memberships m JOIN groups g ON g.id=m.group_id JOIN users u ON u.id=m.user_id JOIN user_handles h ON h.user_id=m.user_id",$suffix) }; }
 
 #[derive(FromRow)]
 struct Access {
@@ -74,8 +76,8 @@ async fn access(c: &mut PgConnection, user: Uuid, group: Uuid) -> AppResult<Acce
         .bind(user).bind(group).fetch_optional(c).await?.ok_or(AppError::NotFound("group"))
 }
 async fn summary(c: &mut PgConnection, user: Uuid, group: Uuid) -> AppResult<GroupSummary> {
-    sqlx::query_as(&format!(
-        "{SUMMARY} WHERE g.id=$2 AND (g.deleted_at IS NULL OR g.owner_id=$1)"
+    sqlx::query_as(summary_sql!(
+        " WHERE g.id=$2 AND (g.deleted_at IS NULL OR g.owner_id=$1)"
     ))
     .bind(user)
     .bind(group)
@@ -202,8 +204,8 @@ impl Store {
         Ok(())
     }
     pub async fn list_groups(&self, user: Uuid) -> AppResult<Vec<GroupSummary>> {
-        Ok(sqlx::query_as(&format!(
-            "{SUMMARY} WHERE g.deleted_at IS NULL OR g.owner_id=$1 ORDER BY g.name,g.id LIMIT 25"
+        Ok(sqlx::query_as(summary_sql!(
+            " WHERE g.deleted_at IS NULL OR g.owner_id=$1 ORDER BY g.name,g.id LIMIT 25"
         ))
         .bind(user)
         .fetch_all(&self.pool)
@@ -260,8 +262,8 @@ impl Store {
         if group.deleted_at.is_some() {
             return Err(AppError::NotFound("group"));
         }
-        let members = sqlx::query_as(&format!(
-            "{MEMBER} WHERE m.group_id=$1 AND m.state='active' ORDER BY h.handle LIMIT 100"
+        let members = sqlx::query_as(member_sql!(
+            " WHERE m.group_id=$1 AND m.state='active' ORDER BY h.handle LIMIT 100"
         ))
         .bind(id)
         .fetch_all(&mut *tx)
@@ -269,8 +271,8 @@ impl Store {
         let leader = group.my_role != "member";
         let owner = group.my_role == "owner";
         let removed_members = if owner {
-            sqlx::query_as(&format!(
-                "{MEMBER} WHERE m.group_id=$1 AND m.state='removed' ORDER BY h.handle LIMIT 500"
+            sqlx::query_as(member_sql!(
+                " WHERE m.group_id=$1 AND m.state='removed' ORDER BY h.handle LIMIT 500"
             ))
             .bind(id)
             .fetch_all(&mut *tx)
@@ -279,7 +281,7 @@ impl Store {
             vec![]
         };
         let invitations = if leader {
-            sqlx::query_as(&format!("{INVITATION} WHERE i.group_id=$1 AND i.revoked_at IS NULL AND i.expires_at>NOW() AND i.uses<i.max_uses ORDER BY i.expires_at LIMIT 50")).bind(id).fetch_all(&mut *tx).await?
+            sqlx::query_as(invitation_sql!(" WHERE i.group_id=$1 AND i.revoked_at IS NULL AND i.expires_at>NOW() AND i.uses<i.max_uses ORDER BY i.expires_at LIMIT 50")).bind(id).fetch_all(&mut *tx).await?
         } else {
             vec![]
         };
@@ -699,7 +701,7 @@ impl Store {
                 "Could not issue a unique invitation. Please try again.".into(),
             ));
         }
-        let invitation = sqlx::query_as(&format!("{INVITATION} WHERE i.id=$1"))
+        let invitation = sqlx::query_as(invitation_sql!(" WHERE i.id=$1"))
             .bind(id)
             .fetch_one(&mut *tx)
             .await?;
@@ -733,7 +735,7 @@ impl Store {
         Ok(())
     }
     pub async fn group_invitation_inbox(&self, user: Uuid) -> AppResult<GroupInbox> {
-        let invitations=sqlx::query_as(&format!("{INVITATION} WHERE i.recipient_id=$1 AND i.revoked_at IS NULL AND i.expires_at>NOW() AND i.uses<i.max_uses AND g.deleted_at IS NULL ORDER BY i.expires_at LIMIT 100")).bind(user).fetch_all(&self.pool).await?;
+        let invitations=sqlx::query_as(invitation_sql!(" WHERE i.recipient_id=$1 AND i.revoked_at IS NULL AND i.expires_at>NOW() AND i.uses<i.max_uses AND g.deleted_at IS NULL ORDER BY i.expires_at LIMIT 100")).bind(user).fetch_all(&self.pool).await?;
         let requests=sqlx::query_as("SELECT r.id,r.group_id,g.name AS group_name,CASE WHEN i.revoked_at IS NOT NULL OR i.expires_at<=NOW() OR i.version<>r.invitation_version OR i.uses>=i.max_uses THEN 'closed' ELSE r.state END AS state,r.version FROM group_join_requests r JOIN groups g ON g.id=r.group_id JOIN group_invitations i ON i.id=r.invitation_id AND i.group_id=r.group_id WHERE r.user_id=$1 AND r.state IN ('pending','denied') AND g.deleted_at IS NULL ORDER BY r.updated_at LIMIT 100").bind(user).fetch_all(&self.pool).await?;
         Ok(GroupInbox {
             invitations,
