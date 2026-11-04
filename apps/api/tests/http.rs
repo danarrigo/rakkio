@@ -16,6 +16,8 @@ use utoipa::OpenApi;
 
 #[path = "http/discord.rs"]
 mod discord;
+#[path = "http/groups.rs"]
+mod groups;
 #[path = "http/handles.rs"]
 mod handles;
 #[path = "http/rebrand.rs"]
