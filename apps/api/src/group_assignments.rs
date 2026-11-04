@@ -171,6 +171,17 @@ pub async fn create(
         state.store.create_group_assignment(user, id, body).await?,
     ))
 }
+#[utoipa::path(get,operation_id="group_assignments_get",path="/api/v1/groups/{group_id}/assignments/{assignment_id}",params(("group_id"=Uuid,Path),("assignment_id"=Uuid,Path)),responses((status=200,body=GroupAssignment),(status=401,body=ErrorResponse),(status=404,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+pub async fn get(
+    State(state): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    ApiPath((group, id)): ApiPath<(Uuid, Uuid)>,
+) -> AppResult<Json<GroupAssignment>> {
+    groups::available(&state)?;
+    Ok(Json(
+        state.store.get_group_assignment(user, group, id).await?,
+    ))
+}
 #[utoipa::path(put,operation_id="group_assignments_update",path="/api/v1/groups/{group_id}/assignments/{assignment_id}",params(("group_id"=Uuid,Path),("assignment_id"=Uuid,Path)),request_body=UpdateGroupAssignment,responses((status=200,body=GroupAssignment),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn update(
     State(state): State<AppState>,

@@ -87,6 +87,7 @@ pub struct AppState {
     paths(
         crate::group_assignments::list,
         crate::group_assignments::create,
+        crate::group_assignments::get,
         crate::group_assignments::update,
         crate::group_assignments::complete,
         crate::group_assignments::report,
@@ -452,7 +453,7 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         )
         .route(
             "/groups/{group_id}/assignments/{assignment_id}",
-            put(crate::group_assignments::update),
+            get(crate::group_assignments::get).put(crate::group_assignments::update),
         )
         .route(
             "/groups/{group_id}/assignments/{assignment_id}/progress",

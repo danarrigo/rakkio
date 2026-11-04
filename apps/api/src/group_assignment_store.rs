@@ -192,6 +192,21 @@ impl Store {
             next_cursor,
         })
     }
+    pub async fn get_group_assignment(
+        &self,
+        user: Uuid,
+        group: Uuid,
+        id: Uuid,
+    ) -> AppResult<GroupAssignment> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+            .execute(&mut *tx)
+            .await?;
+        let a = read_access(&mut tx, user, group).await?;
+        let result = assignment(&mut tx, a.my_membership_id, group, id).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
     pub async fn create_group_assignment(
         &self,
         user: Uuid,

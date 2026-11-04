@@ -327,6 +327,18 @@ async fn shared_definitions_reject_member_edits_cross_group_ids_wrong_actor_and_
         StatusCode::NOT_FOUND
     );
     assert_eq!(
+        call(&r, outsider, "GET", &item(&g, &a), Value::Null)
+            .await?
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call(&r, bob, "GET", &item(&other, &a), Value::Null)
+            .await?
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
         call(&r, bob, "PUT", &item(&other, &a), edit(&a)).await?.0,
         StatusCode::NOT_FOUND
     );
@@ -690,6 +702,9 @@ async fn assignment_pages_separate_open_work_from_closed_history_with_stable_cur
     .1;
     assert_eq!(history["items"].as_array().unwrap().len(), 1);
     assert_eq!(history["items"][0]["id"], second["id"]);
+    let (s, single) = call(&r, owner, "GET", &item(&g, &second), Value::Null).await?;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(single["state"], "closed");
     assert_eq!(
         call(
             &r,
