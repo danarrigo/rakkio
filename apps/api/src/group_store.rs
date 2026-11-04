@@ -482,6 +482,16 @@ impl Store {
                 if !valid {
                     return Err(AppError::NotFound("ownership offer"));
                 }
+                let owned: i64 =
+                    sqlx::query_scalar("SELECT COUNT(*) FROM groups WHERE owner_id=$1")
+                        .bind(user)
+                        .fetch_one(&mut *tx)
+                        .await?;
+                if owned >= 5 {
+                    return Err(AppError::Forbidden(
+                        "Ownership limit reached (5 groups). Free an owned-group slot before accepting.",
+                    ));
+                }
                 if a.my_role != "leader" {
                     leaders_capacity(&mut tx, id).await?;
                 }

@@ -700,3 +700,98 @@ async fn group_mutations_bind_actor_cookie_csrf_and_strict_bodies(
     assert_eq!(response.status(), StatusCode::OK);
     Ok(())
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn ownership_transfer_cannot_bypass_owned_group_capacity(pool: PgPool) -> anyhow::Result<()> {
+    let (router, _, [owner, alice, _, _]) = fixture(&pool).await?;
+    let group = create(&router, owner).await?;
+    for _ in 0..5 {
+        create(&router, alice).await?;
+    }
+    let invitation = invite(&router, owner, &group, "direct", Some("alice"), 1).await?;
+    assert_eq!(join(&router, alice, &invitation).await?.0, StatusCode::OK);
+    let view = detail(&router, owner, &group).await?;
+    let target = member(&view, "alice");
+    assert_eq!(
+        action(
+            &router,
+            owner,
+            &group,
+            json!({"kind":"offer_ownership","membership_id":target["id"]})
+        )
+        .await?
+        .0,
+        StatusCode::OK
+    );
+    let offered = detail(&router, alice, &group).await?;
+    assert_eq!(
+        action(
+            &router,
+            alice,
+            &group,
+            json!({"kind":"accept_ownership","offer_id":offered["ownership_offer"]["id"]})
+        )
+        .await?
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        detail(&router, owner, &group).await?["group"]["owner_id"],
+        json!(owner)
+    );
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn account_erasure_and_ownership_acceptance_have_one_safe_winner(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, store, [owner, alice, _, _]) = fixture(&pool).await?;
+    let group = create(&router, owner).await?;
+    let invitation = invite(&router, owner, &group, "direct", Some("alice"), 1).await?;
+    assert_eq!(join(&router, alice, &invitation).await?.0, StatusCode::OK);
+    let view = detail(&router, owner, &group).await?;
+    let target = member(&view, "alice");
+    assert_eq!(
+        action(
+            &router,
+            owner,
+            &group,
+            json!({"kind":"offer_ownership","membership_id":target["id"]})
+        )
+        .await?
+        .0,
+        StatusCode::OK
+    );
+    let offered = detail(&router, alice, &group).await?;
+    let (erasure, transfer) = tokio::join!(
+        store.prepare_account_deletion(alice),
+        action(
+            &router,
+            alice,
+            &group,
+            json!({"kind":"accept_ownership","offer_id":offered["ownership_offer"]["id"]})
+        )
+    );
+    let (status, body) = transfer?;
+    if erasure.is_ok() {
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+        assert_eq!(
+            detail(&router, owner, &group).await?["group"]["owner_id"],
+            json!(owner)
+        );
+    } else {
+        assert!(matches!(
+            erasure,
+            Err(prosepect_api::error::AppError::Conflict(_))
+        ));
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            detail(&router, alice, &group).await?["group"]["owner_id"],
+            json!(alice)
+        );
+    }
+    let active:i64=sqlx::query_scalar("SELECT COUNT(*) FROM groups g JOIN group_memberships m ON m.group_id=g.id AND m.user_id=g.owner_id AND m.state='active'").fetch_one(&pool).await?;
+    assert_eq!(active, 1);
+    Ok(())
+}
