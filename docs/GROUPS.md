@@ -13,7 +13,7 @@ Status: staged implementation. User handles are released; group membership is be
 - Leaders manage invitations and review join requests. They cannot appoint leaders, remove members, delete the group or transfer ownership.
 - Members view the shared roster and manage only their own participation. Everyone's personal workspace remains private.
 - Public roster fields are display name (bounded to 120 characters), handle and role. Emails, other members' progress, private preferences and invite hashes are not projected.
-- Creating/joining requires an explicit roster-sharing acknowledgement with the notice version pinned to the UI copy. Accepted versions and joining time are stored; approving a pending request preserves its originally accepted version rather than upgrading it to the approving server's current notice.
+- Creating/joining requires an explicit roster-sharing acknowledgement with the notice version `2026-11-04` pinned to the UI copy. This is separate from the global Privacy Policy and Discord sharing versions; never automatically echo a future server version without the matching disclosure. Accepted versions and joining time are stored; approving a pending request preserves its originally accepted version rather than upgrading it to the approving server's current notice.
 
 ## Joining
 
