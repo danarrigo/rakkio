@@ -92,6 +92,7 @@ pub async fn export_calendars_ics(
         (status = 204, description = "Account and user-owned data deleted"),
         (status = 401, body = ErrorResponse),
         (status = 403, body = ErrorResponse),
+        (status = 409, body = ErrorResponse),
         (status = 422, body = ErrorResponse)
     ),
     security(("session_cookie" = []), ("development_user" = [])),
@@ -107,6 +108,7 @@ pub async fn delete_account(
             "account deletion confirmation must equal DELETE".to_owned(),
         ));
     }
+    state.store.prepare_account_deletion(user_id).await?;
     match state.store.google_credentials(user_id).await {
         Ok(credentials) => {
             let google = state

@@ -892,6 +892,7 @@ fn test_config() -> Config {
         app_url: "http://localhost:5173".to_owned(),
         allow_insecure_dev_auth: true,
         invite_only: false,
+        groups_enabled: false,
         trust_proxy_headers: false,
         google_oauth: None,
         discord: None,

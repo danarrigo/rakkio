@@ -59,6 +59,7 @@ pub struct Config {
     pub app_url: String,
     pub allow_insecure_dev_auth: bool,
     pub invite_only: bool,
+    pub groups_enabled: bool,
     pub trust_proxy_headers: bool,
     pub google_oauth: Option<GoogleOAuthConfig>,
     pub discord: Option<crate::discord::DiscordConfig>,
@@ -112,6 +113,10 @@ impl Config {
             .unwrap_or_else(|_| "false".to_owned())
             .parse()
             .context("INVITE_ONLY must be true or false")?;
+        let groups_enabled = env::var("GROUPS_ENABLED")
+            .unwrap_or_else(|_| "false".to_owned())
+            .parse()
+            .context("GROUPS_ENABLED must be true or false")?;
         let trust_proxy_headers = env::var("TRUST_PROXY_HEADERS")
             .unwrap_or_else(|_| "false".to_owned())
             .parse()
@@ -234,6 +239,7 @@ impl Config {
             app_url,
             allow_insecure_dev_auth,
             invite_only,
+            groups_enabled,
             trust_proxy_headers,
             google_oauth,
             discord,
