@@ -1,6 +1,6 @@
 # rakkio
 
-Language for rakkio's personal planning and proposed shared groups. These definitions describe the product concepts, not which features are already implemented.
+Language for rakkio's personal planning and shared groups. These definitions describe the product concepts, not which features are already implemented.
 
 ## Groups
 

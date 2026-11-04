@@ -128,13 +128,56 @@ impl Store {
                 "account deletion confirmation must equal DELETE".to_owned(),
             ));
         }
+        self.prepare_account_deletion(user_id).await?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+        sqlx::query_scalar::<_,Uuid>("SELECT g.id FROM groups g JOIN group_memberships m ON m.group_id=g.id WHERE m.user_id=$1 ORDER BY g.id FOR UPDATE OF g")
+            .bind(user_id).fetch_all(&mut *tx).await?;
+        sqlx::query("UPDATE group_invitations SET revoked_at=NOW(),version=version+1 WHERE issuer_id=$1 AND revoked_at IS NULL")
+            .bind(user_id).execute(&mut *tx).await?;
         let result = sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(user_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         if result.rows_affected() == 0 {
             return Err(AppError::Unauthorized);
         }
+        Ok(())
+    }
+
+    /// Run before any provider revocation or object deletion. Group admissions
+    /// remain blocked if external cleanup fails; retrying deletion is safe.
+    pub async fn prepare_account_deletion(&self, user_id: Uuid) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+        sqlx::query_scalar::<_,Uuid>("SELECT g.id FROM groups g JOIN group_memberships m ON m.group_id=g.id WHERE m.user_id=$1 ORDER BY g.id FOR UPDATE OF g")
+            .bind(user_id).fetch_all(&mut *tx).await?;
+        sqlx::query("DELETE FROM groups WHERE owner_id=$1 AND undo_until<=NOW()")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        let owns: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM groups WHERE owner_id=$1)")
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if owns {
+            return Err(AppError::Conflict("Transfer ownership or delete your owned groups first. Wait for the 60-second group Undo window to expire before deleting your account.".into()));
+        }
+        sqlx::query("UPDATE users SET group_admission_blocked=TRUE WHERE id=$1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -191,7 +234,11 @@ impl Store {
         let recurrence_templates = self.recurrence_templates(user_id).await?;
         let discord_connection = sqlx::query_scalar::<_, serde_json::Value>("SELECT jsonb_build_object('discord_user_id',discord_user_id,'username',username,'timezone',timezone,'consent_version',consent_version,'connected_at',connected_at) FROM discord_connections WHERE user_id=$1")
             .bind(user_id).fetch_optional(&self.pool).await?;
+        let group_membership_notices=sqlx::query_scalar::<_,serde_json::Value>("SELECT jsonb_build_object('membership_id',id,'group_id',group_id,'state',state,'joined_at',joined_at,'roster_notice_version',roster_notice_version,'share_progress',share_progress,'discord_enabled',discord_enabled) FROM group_memberships WHERE user_id=$1 ORDER BY group_id")
+            .bind(user_id).fetch_all(&self.pool).await?;
         Ok(AccountExport {
+            group_membership_notices,
+            groups: self.list_groups(user_id).await?,
             handle: self.own_handle(user_id).await?.handle,
             discord_connection,
             recurrence_templates,
@@ -224,6 +271,8 @@ impl Store {
 
 #[derive(Serialize)]
 struct AccountExport {
+    group_membership_notices: Vec<serde_json::Value>,
+    groups: Vec<crate::groups::GroupSummary>,
     handle: Option<String>,
     discord_connection: Option<serde_json::Value>,
     recurrence_templates: Vec<crate::task_recurrence::RecurrenceTemplateExport>,

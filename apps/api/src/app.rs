@@ -56,6 +56,7 @@ pub struct AppState {
     pub store: Store,
     pub allow_insecure_dev_auth: bool,
     pub invite_only: bool,
+    pub groups_enabled: bool,
     pub trust_proxy_headers: bool,
     pub login_rate_limiter: LoginRateLimiter,
     pub action_rate_limiter: LoginRateLimiter,
@@ -84,6 +85,17 @@ pub struct AppState {
         description = "Personal productivity API for rakkio"
     ),
     paths(
+        crate::groups::capability,
+        crate::groups::list,
+        crate::groups::create,
+        crate::groups::detail,
+        crate::groups::mutate,
+        crate::groups::invite,
+        crate::groups::revoke,
+        crate::groups::inbox,
+        crate::groups::decline,
+        crate::groups::preview,
+        crate::groups::join,
         crate::profile::get_handle,
         crate::profile::claim_handle,
         crate::discord_routes::status,
@@ -172,6 +184,26 @@ pub struct AppState {
         sync_routes::activity
     ),
     components(schemas(
+        crate::groups::GroupCapability,
+        crate::groups::GroupSummary,
+        crate::groups::GroupMember,
+        crate::groups::GroupInvitation,
+        crate::groups::GroupJoinRequest,
+        crate::groups::MyGroupJoinRequest,
+        crate::groups::GroupInbox,
+        crate::groups::OwnershipOffer,
+        crate::groups::GroupDetail,
+        crate::groups::CreateGroup,
+        crate::groups::GroupMutation,
+        crate::groups::GroupAction,
+        crate::groups::GroupMutationResult,
+        crate::groups::IssueGroupInvitation,
+        crate::groups::IssuedGroupInvitation,
+        crate::groups::RevokeGroupInvitation,
+        crate::groups::GroupInviteReference,
+        crate::groups::JoinGroup,
+        crate::groups::GroupInvitePreview,
+        crate::groups::GroupJoinResult,
         crate::profile::HandleProfile,
         crate::profile::ClaimHandleRequest,
         crate::discord_routes::DiscordStatus,
@@ -279,6 +311,7 @@ pub struct AppState {
         (name = "exports", description = "Portable data exports"),
         (name = "imports", description = "Imports from other productivity tools"),
         (name = "account", description = "Account lifecycle"),
+        (name = "groups", description = "Membership-authorized shared groups; staged server rollout"),
         (name = "files", description = "Authorized file attachments"),
         (name = "synchronization", description = "Google Calendar synchronization and activity")
     )
@@ -361,6 +394,7 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         store,
         allow_insecure_dev_auth: config.allow_insecure_dev_auth,
         invite_only: config.invite_only,
+        groups_enabled: config.groups_enabled,
         trust_proxy_headers: config.trust_proxy_headers,
         login_rate_limiter: LoginRateLimiter::default(),
         action_rate_limiter: LoginRateLimiter::with_limit(60),
@@ -386,6 +420,28 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
     };
 
     let api = Router::new()
+        .route("/groups/capability", get(crate::groups::capability))
+        .route(
+            "/groups",
+            get(crate::groups::list).post(crate::groups::create),
+        )
+        .route("/groups/{group_id}", get(crate::groups::detail))
+        .route("/groups/{group_id}/actions", post(crate::groups::mutate))
+        .route(
+            "/groups/{group_id}/invitations",
+            post(crate::groups::invite),
+        )
+        .route(
+            "/groups/{group_id}/invitations/{invitation_id}/revoke",
+            post(crate::groups::revoke),
+        )
+        .route("/groups/invitations/inbox", get(crate::groups::inbox))
+        .route(
+            "/groups/invitations/{invitation_id}/decline",
+            post(crate::groups::decline),
+        )
+        .route("/groups/join/preview", post(crate::groups::preview))
+        .route("/groups/join", post(crate::groups::join))
         .route("/integrations/discord", get(crate::discord_routes::status))
         .route(
             "/integrations/discord/connect",

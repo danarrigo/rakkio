@@ -202,6 +202,7 @@ fn app_state(f: &Fixture) -> anyhow::Result<prosepect_api::app::AppState> {
         store: f.store.clone(),
         allow_insecure_dev_auth: true,
         invite_only: false,
+        groups_enabled: false,
         trust_proxy_headers: false,
         login_rate_limiter: LoginRateLimiter::default(),
         action_rate_limiter: LoginRateLimiter::default(),

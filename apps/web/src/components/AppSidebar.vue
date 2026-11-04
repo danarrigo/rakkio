@@ -9,15 +9,18 @@ import {
   LayoutDashboard,
   Inbox,
   Settings,
+  Users,
   X,
 } from '@lucide/vue'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useGroupsStore } from '../stores/groups'
 import BrandLogo from './BrandLogo.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const closeButton = ref<HTMLButtonElement | null>(null)
 const store = useWorkspaceStore()
+const groups = useGroupsStore()
 const route = useRoute()
 const router = useRouter()
 const visibleProjects = computed(() =>
@@ -121,6 +124,15 @@ function showAllProjects() {
         <span v-if="store.openTasks.length" class="nav-count">{{ store.openTasks.length }}</span>
       </RouterLink>
     </nav>
+
+    <RouterLink
+      v-if="groups.enabled"
+      class="nav-item mt-2"
+      :class="{ active: route.name === 'groups' }"
+      to="/groups"
+      @click="emit('close')"
+      ><Users :size="17" /><span>Groups</span></RouterLink
+    >
 
     <div v-if="visibleProjects.length" class="mt-8 px-2">
       <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400">Your projects</span>

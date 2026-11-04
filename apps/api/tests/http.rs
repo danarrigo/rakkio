@@ -16,6 +16,8 @@ use utoipa::OpenApi;
 
 #[path = "http/discord.rs"]
 mod discord;
+#[path = "http/groups.rs"]
+mod groups;
 #[path = "http/handles.rs"]
 mod handles;
 #[path = "http/rebrand.rs"]
@@ -321,7 +323,7 @@ async fn google_login_requires_current_legal_acceptance(pool: PgPool) -> anyhow:
     let accepted = router
         .oneshot(
             Request::builder()
-                .uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-03-handles&age_confirmed=true")
+                .uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-04-groups&age_confirmed=true")
                 .body(Body::empty())?,
         )
         .await?;
@@ -890,6 +892,7 @@ fn test_config() -> Config {
         app_url: "http://localhost:5173".to_owned(),
         allow_insecure_dev_auth: true,
         invite_only: false,
+        groups_enabled: false,
         trust_proxy_headers: false,
         google_oauth: None,
         discord: None,

@@ -29,6 +29,18 @@ export const router = createRouter({
     },
     { path: '/files', name: 'files', component: () => import('./views/FilesView.vue') },
     {
+      path: '/groups',
+      name: 'groups',
+      component: () => import('./views/GroupsView.vue'),
+      meta: { title: 'Groups' },
+    },
+    {
+      path: '/join',
+      name: 'group-join',
+      component: () => import('./views/GroupJoinView.vue'),
+      meta: { public: true, title: 'Group invitation' },
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('./views/SettingsView.vue'),

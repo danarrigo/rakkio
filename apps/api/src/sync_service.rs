@@ -63,6 +63,7 @@ impl SyncService {
     pub async fn run_once(&self) -> Result<bool> {
         self.store.cleanup_task_delete_undos().await?;
         self.store.cleanup_discord().await?;
+        self.store.cleanup_groups().await?;
         let Some(job) = self.store.claim_sync_job().await? else {
             return Ok(false);
         };

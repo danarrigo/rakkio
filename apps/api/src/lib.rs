@@ -22,6 +22,8 @@ pub mod google_tasks_client;
 pub mod google_tasks_routes;
 pub mod google_tasks_store;
 mod google_tasks_sync;
+mod group_store;
+pub mod groups;
 pub mod import_routes;
 pub mod models;
 pub mod note_routes;

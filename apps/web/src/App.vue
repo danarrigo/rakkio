@@ -11,6 +11,7 @@ import {
   RotateCw,
   Settings as SettingsIcon,
   Sun,
+  Users,
   X,
 } from '@lucide/vue'
 import * as api from './api/client'
@@ -31,8 +32,10 @@ import {
 } from './keyboard'
 import { dueInAppReminders, parseDismissedReminders, reminderKey } from './reminders'
 import { useWorkspaceStore } from './stores/workspace'
+import { useGroupsStore } from './stores/groups'
 
 const store = useWorkspaceStore()
+const groups = useGroupsStore()
 const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(false)
@@ -85,6 +88,7 @@ const pageTitle = computed(() => {
   if (route.name === 'files') return 'Files'
   if (route.name === 'operations') return 'Operations'
   if (route.name === 'settings') return 'Settings'
+  if (route.name === 'groups') return 'Groups'
   return 'Today'
 })
 
@@ -291,6 +295,14 @@ onBeforeUnmount(() => {
             <CircleHelp :size="17" />
           </button>
           <RouterLink
+            v-if="groups.enabled && !sidebarVisible"
+            class="icon-button"
+            to="/groups"
+            aria-label="Groups"
+            title="Groups"
+            ><Users :size="17"
+          /></RouterLink>
+          <RouterLink
             v-if="store.operationsAllowed && !sidebarVisible"
             class="icon-button"
             to="/operations"
@@ -321,6 +333,14 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
+      <p
+        v-if="groups.enabled && groups.pendingCredential"
+        role="status"
+        class="mx-5 mt-4 text-sm sm:mx-8"
+      >
+        You have a group invitation to review.
+        <RouterLink to="/groups" class="underline underline-offset-4">Review invitation</RouterLink>
+      </p>
       <div
         v-if="undoFeedbackVisible"
         class="mx-auto grid max-h-[45dvh] w-full max-w-xl gap-2 overflow-y-auto overscroll-contain p-3"
