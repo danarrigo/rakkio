@@ -5,7 +5,7 @@ use crate::{
     models::PageQuery,
     store::Store,
 };
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
 use sqlx::{FromRow, PgConnection};
 use uuid::Uuid;
 
@@ -80,6 +80,7 @@ async fn fields(
         || title.chars().count() > 240
         || title.chars().any(char::is_control)
         || description.chars().count() > 10000
+        || description.contains('\0')
     {
         return Err(AppError::Validation(
             "Use a 1-240 character title on one line and a description up to 10,000 characters."
@@ -113,6 +114,11 @@ async fn fields(
             let time = NaiveTime::parse_from_str(value, "%H:%M")
                 .or_else(|_| NaiveTime::parse_from_str(value, "%H:%M:%S"))
                 .map_err(|_| AppError::Validation("Choose a valid deadline time.".into()))?;
+            if time.nanosecond() != 0 {
+                return Err(AppError::Validation(
+                    "Choose a deadline without leap seconds.".into(),
+                ));
+            }
             let valid:bool=sqlx::query_scalar("SELECT ((($1::date+$2::time) AT TIME ZONE $3) AT TIME ZONE $3)=($1::date+$2::time)").bind(date).bind(time).bind(timezone).fetch_one(c).await?;
             if !valid {
                 return Err(AppError::Validation("That local time does not exist because the timezone clock changes. Choose another time.".into()));

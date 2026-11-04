@@ -465,6 +465,8 @@ async fn shared_assignment_deadlines_snapshot_timezone_and_reject_nonexistent_cl
     for body in [
         json!({"title":"Gap","due_on":"2027-03-14","due_time":"02:30"}),
         json!({"title":"No date","due_time":"10:00"}),
+        json!({"title":"Leap second","due_on":"2026-11-12","due_time":"23:59:60"}),
+        json!({"title":"NUL description","description":"\0"}),
         json!({"title":"Invalid","due_on":"2026-11-31"}),
         json!({"title":"Bad\nline"}),
     ] {
@@ -543,9 +545,16 @@ async fn streaming_account_export_rechecks_membership_before_delivering_shared_d
     enroll(&r, owner, alice, &g, "alice").await?;
     let a = publish(&r, owner, &g).await?;
     assert_eq!(progress(&r, alice, &g, &a, true).await?.0, StatusCode::OK);
+    sqlx::query("INSERT INTO group_assignments(id,group_id,title,timezone) SELECT gen_random_uuid(),$1,'Assignment '||n,'UTC' FROM generate_series(1,100) n")
+        .bind(g["id"].as_str().unwrap().parse::<Uuid>()?).execute(&pool).await?;
     let own: Value = serde_json::from_slice(&store.export_json(alice).await?)?;
-    assert_eq!(own["group_assignments"][0]["assignment"]["id"], a["id"]);
-    assert!(own["group_assignments"][0]["my_progress"]["completed_at"].is_string());
+    let exported = own["group_assignments"].as_array().unwrap();
+    assert_eq!(exported.len(), 101);
+    let completed = exported
+        .iter()
+        .find(|row| row["assignment"]["id"] == a["id"])
+        .unwrap();
+    assert!(completed["my_progress"]["completed_at"].is_string());
     let outsider: Value = serde_json::from_slice(&store.export_json(bob).await?)?;
     assert_eq!(outsider["group_assignments"], json!([]));
     let stream = store.export_json_stream(alice).await?;
