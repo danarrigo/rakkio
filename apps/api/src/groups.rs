@@ -217,7 +217,7 @@ fn mutation(state: &AppState, user: Uuid, expected: Uuid) -> AppResult<()> {
 #[utoipa::path(get,path="/api/v1/groups/capability",responses((status=200,body=GroupCapability),(status=401,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn capability(
     State(state): State<AppState>,
-    CurrentUser(_): CurrentUser,
+    CurrentUser(_user): CurrentUser,
 ) -> Json<GroupCapability> {
     Json(GroupCapability {
         enabled: state.groups_enabled,
