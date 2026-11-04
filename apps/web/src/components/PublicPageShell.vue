@@ -2,11 +2,15 @@
 import { RouterLink } from 'vue-router'
 import BrandLogo from './BrandLogo.vue'
 
-defineProps<{
-  title: string
-  summary: string
-  lastUpdated: string
-}>()
+withDefaults(
+  defineProps<{
+    title: string
+    summary: string
+    lastUpdated?: string
+    eyebrow?: string
+  }>(),
+  { eyebrow: 'Legal', lastUpdated: '' },
+)
 </script>
 
 <template>
@@ -31,12 +35,12 @@ defineProps<{
     </header>
 
     <main id="public-document" class="mx-auto max-w-3xl px-5 py-14 sm:px-8 sm:py-20">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Legal</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ eyebrow }}</p>
       <h1 class="mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">{{ title }}</h1>
       <p class="mt-4 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
         {{ summary }}
       </p>
-      <p class="mt-3 text-xs text-slate-400">Last updated {{ lastUpdated }}</p>
+      <p v-if="lastUpdated" class="mt-3 text-xs text-slate-400">Last updated {{ lastUpdated }}</p>
 
       <article class="public-document mt-12 border-t border-slate-200 pt-10 dark:border-slate-800">
         <slot />

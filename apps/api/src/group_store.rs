@@ -44,7 +44,8 @@ impl Access {
         Ok(())
     }
 }
-async fn lock_users(c: &mut PgConnection, mut users: Vec<Uuid>) -> AppResult<()> {
+async fn lock_users(c: &mut PgConnection, actor: Uuid, mut users: Vec<Uuid>) -> AppResult<()> {
+    users.push(actor);
     users.sort();
     users.dedup();
     let found = sqlx::query_scalar::<_, Uuid>(
@@ -53,20 +54,28 @@ async fn lock_users(c: &mut PgConnection, mut users: Vec<Uuid>) -> AppResult<()>
     .bind(&users)
     .fetch_all(&mut *c)
     .await?;
+    if !found.contains(&actor) {
+        return Err(AppError::Unauthorized);
+    }
     if found.len() != users.len() {
         return Err(AppError::Conflict(
-            "An account is no longer available. Refresh before continuing.".into(),
+            "Another account is no longer available. Refresh before continuing.".into(),
         ));
     }
-    let blocked: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE id=ANY($1) AND group_admission_blocked)",
+    let blocked = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM users WHERE id=ANY($1) AND group_admission_blocked",
     )
     .bind(&users)
-    .fetch_one(c)
+    .fetch_all(c)
     .await?;
-    if blocked {
+    if blocked.contains(&actor) {
         return Err(AppError::Forbidden(
             "Account deletion is in progress. Retry account deletion before making group changes.",
+        ));
+    }
+    if !blocked.is_empty() {
+        return Err(AppError::Conflict(
+            "Another account is not available for this action. Refresh before continuing.".into(),
         ));
     }
     Ok(())
@@ -222,7 +231,7 @@ impl Store {
         sqlx::query("SELECT pg_advisory_xact_lock(1886547816,2)")
             .execute(&mut *tx)
             .await?;
-        lock_users(&mut tx, vec![user]).await?;
+        lock_users(&mut tx, user, vec![]).await?;
         require_handle(&mut tx, user).await?;
         let name = valid_group(&mut tx, &body.name, &body.timezone).await?;
         let (total, owned): (i64, i64) =
@@ -296,7 +305,7 @@ impl Store {
         } else {
             vec![]
         };
-        let ownership_offer=sqlx::query_as("SELECT o.id,o.to_membership_id,o.expires_at,o.group_version FROM group_ownership_offers o JOIN group_memberships m ON m.id=o.to_membership_id WHERE o.group_id=$1 AND o.expires_at>NOW() AND ($2 OR m.user_id=$3)").bind(id).bind(owner).bind(user).fetch_optional(&mut *tx).await?;
+        let ownership_offer=sqlx::query_as("SELECT o.id,o.to_membership_id,o.expires_at,o.group_version FROM group_ownership_offers o JOIN group_memberships m ON m.id=o.to_membership_id WHERE o.group_id=$1 AND o.expires_at>NOW() AND o.group_version=$4 AND ($2 OR m.user_id=$3)").bind(id).bind(owner).bind(user).bind(group.version).fetch_optional(&mut *tx).await?;
         tx.commit().await?;
         Ok(GroupDetail {
             group,
@@ -342,7 +351,7 @@ impl Store {
             }
             _ => {}
         }
-        lock_users(&mut tx, users.clone()).await?;
+        lock_users(&mut tx, user, users.clone()).await?;
         let a = access(&mut tx, user, id).await?;
         a.version(body.expected_version)?;
         if matches!(&body.action, GroupAction::AcceptOwnership { .. })
@@ -389,6 +398,7 @@ impl Store {
                 sqlx::query("UPDATE group_memberships SET role=$3,version=version+1 WHERE group_id=$1 AND id=$2").bind(id).bind(membership_id).bind(&role).execute(&mut *tx).await?;
                 if role == "member" {
                     sqlx::query("UPDATE group_invitations SET revoked_at=NOW(),version=version+1 WHERE group_id=$1 AND issuer_id=$2 AND revoked_at IS NULL").bind(id).bind(target.0).execute(&mut *tx).await?;
+                    sqlx::query("DELETE FROM group_ownership_offers WHERE group_id=$1 AND to_membership_id=$2").bind(id).bind(membership_id).execute(&mut *tx).await?;
                 }
             }
             GroupAction::Remove {
@@ -622,7 +632,7 @@ impl Store {
         if let Some(target) = target {
             users.push(target);
         }
-        lock_users(&mut tx, users).await?;
+        lock_users(&mut tx, user, users).await?;
         let a = access(&mut tx, user, group).await?;
         a.leader(user)?;
         a.version(body.expected_version)?;
@@ -725,7 +735,7 @@ impl Store {
         version: i32,
     ) -> AppResult<()> {
         let mut tx = self.pool.begin().await?;
-        lock_users(&mut tx, vec![user]).await?;
+        lock_users(&mut tx, user, vec![]).await?;
         let a = access(&mut tx, user, group).await?;
         a.leader(user)?;
         if a.deleted_at.is_some() {
@@ -755,7 +765,7 @@ impl Store {
         version: i32,
     ) -> AppResult<()> {
         let mut tx = self.pool.begin().await?;
-        lock_users(&mut tx, vec![user]).await?;
+        lock_users(&mut tx, user, vec![]).await?;
         let group:Uuid=sqlx::query_scalar("SELECT group_id FROM group_invitations WHERE id=$1 AND recipient_id=$2 AND kind='direct'").bind(id).bind(user).fetch_optional(&mut *tx).await?.ok_or(AppError::NotFound("invitation"))?;
         sqlx::query_scalar::<_, Uuid>(
             "SELECT id FROM groups WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
@@ -800,7 +810,7 @@ impl Store {
             credential: body.credential,
         };
         let mut tx = self.pool.begin().await?;
-        lock_users(&mut tx, vec![user]).await?;
+        lock_users(&mut tx, user, vec![]).await?;
         require_handle(&mut tx, user).await?;
         let i = invitation(&mut tx, user, reference).await?;
         // Lock the group before rechecking credential state, capacity and access.

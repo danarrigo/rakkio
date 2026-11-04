@@ -6,7 +6,7 @@ import PublicPageShell from '../components/PublicPageShell.vue'
   <PublicPageShell
     title="Privacy Policy"
     summary="How rakkio collects, uses, stores, and protects personal data, including information received through Google APIs."
-    last-updated="November 3, 2026"
+    last-updated="November 4, 2026"
   >
     <section>
       <h2>1. Who operates rakkio</h2>
@@ -46,6 +46,26 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         labels, schedules, reminders, daily plans, calendar events, recurrence information,
         attendees, locations, time zones, comments, and attachments. Content may include personal
         data about other people if you enter it.
+      </p>
+
+      <h3>Groups, where enabled</h3>
+      <p>
+        Groups are released in stages and may not be available on every installation. Group features
+        store membership, roles, invitations and requests, and the shared assignments/events you
+        choose to publish. Joining or requesting to join requires confirmation: members can see your
+        display name, @handle and role, but not your email or personal workspace. Leaders control
+        shared definitions; they do not receive automatic copies of anyone's personal tasks or
+        events. Assignment completion is individual and private by default. If you choose to share
+        progress, the notice identifies that group's owner and all current/future leaders as the
+        audience. Turning sharing off removes live access, but cannot recall information already
+        downloaded.
+      </p>
+      <p>
+        Direct invitations are addressed to existing user identities, not email addresses. Invite
+        links and codes are stored as one-way hashes, expire after seven days and can be revoked.
+        They never sign you in, bypass account admission or grant leader privileges. Group content
+        is native to rakkio initially; it is not automatically synchronized to Google or sent to
+        Discord. Any group inclusion in Discord requires its own explicit sharing choice.
       </p>
 
       <h3>Google Calendar data</h3>
@@ -115,7 +135,10 @@ import PublicPageShell from '../components/PublicPageShell.vue'
       <p>
         rakkio uses a secure session cookie for authentication and browser storage for interface
         preferences, dismissed reminders, and development-only authentication when running a local
-        development build.
+        development build. A group invitation credential may be kept in this tab's session storage
+        for up to 15 minutes so you can review it after signing in. Invitation credentials are
+        removed from the address bar and are not placed in OAuth redirect URLs. If storage is
+        disabled, reopen the original invitation after signing in.
       </p>
     </section>
 
@@ -182,6 +205,11 @@ import PublicPageShell from '../components/PublicPageShell.vue'
         </li>
         <li>when you direct rakkio to place information on a shared Google calendar;</li>
         <li>
+          with group members when you explicitly publish group content or confirm membership; only
+          the public identity and authorized group fields described above are exposed. Personal
+          progress is shared with leaders only through your separate choice;
+        </li>
+        <li>
           with Discord when you connect your account or request task information and actions through
           Discord commands; this can include task information already synchronized with Google Tasks
           or Calendar, plus selected calendar event titles and times after your separate sharing
@@ -199,6 +227,18 @@ import PublicPageShell from '../components/PublicPageShell.vue'
 
     <section>
       <h2>6. Retention and deletion</h2>
+      <p>
+        Leaving or removal revokes group access and clears personal group progress/sharing;
+        rejoining begins fresh. A minimal membership state may remain while the group exists to
+        prevent removed users bypassing the owner's decision through old invitations. Account
+        deletion removes that membership record. Shared group definitions belong to the group and
+        are not erased simply because a former leader deletes their account. Owners must transfer
+        ownership or separately confirm group deletion before deleting their accounts. Group
+        deletion has a 60-second Undo window, subject to unchanged membership; expired records are
+        purged by bounded maintenance. If external account cleanup fails, group changes remain
+        paused while deletion is incomplete; retry deletion to finish rather than acquiring new
+        ownership during erasure.
+      </p>
       <p>
         Account and workspace data is retained while your account remains active or as needed to
         provide the service. Operational logs are retained only as long as reasonably needed for

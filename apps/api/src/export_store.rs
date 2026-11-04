@@ -137,6 +137,8 @@ impl Store {
             .ok_or(AppError::Unauthorized)?;
         sqlx::query_scalar::<_,Uuid>("SELECT g.id FROM groups g JOIN group_memberships m ON m.group_id=g.id WHERE m.user_id=$1 ORDER BY g.id FOR UPDATE OF g")
             .bind(user_id).fetch_all(&mut *tx).await?;
+        sqlx::query("UPDATE group_invitations SET revoked_at=NOW(),version=version+1 WHERE issuer_id=$1 AND revoked_at IS NULL")
+            .bind(user_id).execute(&mut *tx).await?;
         let result = sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(user_id)
             .execute(&mut *tx)

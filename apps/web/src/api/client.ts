@@ -50,6 +50,12 @@ import type {
   UserSettings,
   HandleProfile,
   ClaimHandleRequest,
+  CreateGroup,
+  GroupMutation,
+  IssueGroupInvitation,
+  JoinGroup,
+  GroupInviteReference,
+  RevokeGroupInvitation,
 } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -135,6 +141,83 @@ export async function claimHandle(
   signal?: AbortSignal,
 ): Promise<HandleProfile> {
   return unwrap(await client.POST('/api/v1/profile/handle', { body, signal }))
+}
+
+export async function getGroupsCapability(signal?: AbortSignal) {
+  return unwrap(await client.GET('/api/v1/groups/capability', { signal, cache: 'no-store' }))
+}
+export async function listGroups(signal?: AbortSignal) {
+  return unwrap(await client.GET('/api/v1/groups', { signal, cache: 'no-store' }))
+}
+export async function getGroup(groupId: string, signal?: AbortSignal) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}', {
+      params: { path: { group_id: groupId } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function createGroup(body: CreateGroup, signal?: AbortSignal) {
+  return unwrap(await client.POST('/api/v1/groups', { body, signal }))
+}
+export async function mutateGroup(groupId: string, body: GroupMutation, signal?: AbortSignal) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/actions', {
+      params: { path: { group_id: groupId } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function issueGroupInvitation(
+  groupId: string,
+  body: IssueGroupInvitation,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/invitations', {
+      params: { path: { group_id: groupId } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function revokeGroupInvitation(
+  groupId: string,
+  invitationId: string,
+  body: RevokeGroupInvitation,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/invitations/{invitation_id}/revoke', {
+      params: { path: { group_id: groupId, invitation_id: invitationId } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function getGroupInbox(signal?: AbortSignal) {
+  return unwrap(await client.GET('/api/v1/groups/invitations/inbox', { signal, cache: 'no-store' }))
+}
+export async function declineGroupInvitation(
+  invitationId: string,
+  body: RevokeGroupInvitation,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/invitations/{invitation_id}/decline', {
+      params: { path: { invitation_id: invitationId } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function previewGroupInvitation(body: GroupInviteReference, signal?: AbortSignal) {
+  return unwrap(await client.POST('/api/v1/groups/join/preview', { body, signal }))
+}
+export async function joinGroup(body: JoinGroup, signal?: AbortSignal) {
+  return unwrap(await client.POST('/api/v1/groups/join', { body, signal }))
 }
 
 export async function logout(): Promise<void> {

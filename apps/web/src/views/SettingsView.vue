@@ -23,6 +23,8 @@ const todoistProject = ref('')
 const todoistImportBusy = ref(false)
 const todoistImportMessage = ref('')
 const todoistImportError = ref('')
+const deletingAccount = ref(false)
+const accountDeleteError = ref('')
 
 watch(
   () => store.settings,
@@ -106,9 +108,21 @@ async function importTodoistProject() {
 }
 
 async function deleteAccount() {
+  if (deletingAccount.value) return
   const confirmation = window.prompt('Type DELETE to permanently remove your account and data.')
   if (confirmation !== 'DELETE') return
-  await store.deleteAccount()
+  deletingAccount.value = true
+  accountDeleteError.value = ''
+  try {
+    await store.deleteAccount()
+  } catch (cause) {
+    accountDeleteError.value =
+      cause instanceof Error
+        ? cause.message
+        : 'Account deletion was not confirmed. Refresh to check its status before trying again.'
+  } finally {
+    deletingAccount.value = false
+  }
 }
 </script>
 
@@ -282,14 +296,24 @@ async function deleteAccount() {
       <h2 class="text-sm font-semibold text-rose-700 dark:text-rose-400">Delete account</h2>
       <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
         Permanently deletes projects, tasks, notes, calendars, integration credentials, sessions,
-        and associated files. This cannot be undone.
+        and associated files. This cannot be undone. Transfer ownership or delete owned groups
+        first; group deletion has a 60-second Undo window. If external account cleanup fails after
+        deletion starts, group changes remain paused until you retry deletion to finish.
+      </p>
+      <p
+        v-if="accountDeleteError"
+        role="alert"
+        class="mt-4 text-sm text-rose-700 dark:text-rose-400"
+      >
+        {{ accountDeleteError }}
       </p>
       <button
         class="secondary-button mt-5 text-rose-700 hover:!border-rose-300 hover:!text-rose-800 dark:text-rose-400"
         type="button"
+        :disabled="deletingAccount"
         @click="deleteAccount"
       >
-        <Trash2 :size="15" /> Delete my account
+        <Trash2 :size="15" /> {{ deletingAccount ? 'Deleting account…' : 'Delete my account' }}
       </button>
     </section>
   </div>

@@ -317,6 +317,35 @@ async fn group_roles_direct_invitations_removal_and_ownership_are_scoped(
         .0,
         StatusCode::OK
     );
+    let old_offer = detail(&router, bob, &group).await?["ownership_offer"]["id"].clone();
+    let owner_view = detail(&router, owner, &group).await?;
+    let target = member(&owner_view, "bob");
+    assert_eq!(action(&router,owner,&group,json!({"kind":"set_role","membership_id":target["id"],"expected_membership_version":target["version"],"role":"member"})).await?.0,StatusCode::OK);
+    assert_eq!(
+        action(
+            &router,
+            bob,
+            &group,
+            json!({"kind":"accept_ownership","offer_id":old_offer})
+        )
+        .await?
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let owner_view = detail(&router, owner, &group).await?;
+    let target = member(&owner_view, "bob");
+    assert_eq!(action(&router,owner,&group,json!({"kind":"set_role","membership_id":target["id"],"expected_membership_version":target["version"],"role":"leader"})).await?.0,StatusCode::OK);
+    assert_eq!(
+        action(
+            &router,
+            owner,
+            &group,
+            json!({"kind":"offer_ownership","membership_id":target["id"]})
+        )
+        .await?
+        .0,
+        StatusCode::OK
+    );
     let view = detail(&router, bob, &group).await?;
     let (status, result) = action(
         &router,
@@ -333,6 +362,15 @@ async fn group_roles_direct_invitations_removal_and_ownership_are_scoped(
         "leader"
     );
     store.delete_account(owner, "DELETE").await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM group_invitations WHERE group_id=$1 AND revoked_at IS NULL"
+        )
+        .bind(group["id"].as_str().unwrap().parse::<Uuid>()?)
+        .fetch_one(&pool)
+        .await?,
+        0
+    );
     assert_eq!(
         detail(&router, bob, &group).await?["group"]["owner_id"],
         json!(bob)
@@ -548,6 +586,14 @@ async fn final_membership_slot_is_atomic_and_account_deletion_blocks_new_admissi
         100
     );
     store.prepare_account_deletion(visitor).await?;
+    let unavailable=call(&router,owner,"POST",&format!("/api/v1/groups/{}/invitations",group["id"].as_str().unwrap()),json!({"expected_version":group["version"],"kind":"direct","handle":"visitor","max_uses":1})).await?;
+    assert_eq!(unavailable.0, StatusCode::CONFLICT);
+    assert!(
+        !sqlx::query_scalar::<_, bool>("SELECT group_admission_blocked FROM users WHERE id=$1")
+            .bind(owner)
+            .fetch_one(&pool)
+            .await?
+    );
     assert_eq!(
         call(
             &router,
