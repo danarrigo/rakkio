@@ -138,7 +138,21 @@ async fn preferences(
         .bind(membership).fetch_one(c).await?)
 }
 
+#[derive(FromRow)]
+pub(crate) struct AssignmentExportRow {
+    pub(crate) id: Uuid,
+    pub(crate) value: serde_json::Value,
+}
 impl Store {
+    pub(crate) async fn group_assignment_export_page(
+        &self,
+        user: Uuid,
+        cursor: Option<Uuid>,
+    ) -> AppResult<Vec<AssignmentExportRow>> {
+        // Recheck current membership on every page, including after a long/slow download.
+        Ok(sqlx::query_as("SELECT a.id,jsonb_build_object('group_name',g.name,'assignment',to_jsonb(a)-ARRAY['deleted_at','undo_until','deleted_membership_epoch'],'my_progress',jsonb_build_object('completed_at',p.completed_at,'version',COALESCE(p.version,0),'seen_assignment_version',p.seen_assignment_version)) AS value FROM group_assignments a JOIN groups g ON g.id=a.group_id JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active' LEFT JOIN group_assignment_progress p ON p.assignment_id=a.id AND p.membership_id=m.id WHERE g.deleted_at IS NULL AND a.deleted_at IS NULL AND ($2::uuid IS NULL OR a.id>$2) ORDER BY a.id LIMIT 100")
+            .bind(user).bind(cursor).fetch_all(&self.pool).await?)
+    }
     pub async fn group_assignments(
         &self,
         user: Uuid,

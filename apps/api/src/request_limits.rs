@@ -205,7 +205,18 @@ pub async fn limit_requests(
     } else {
         None
     };
-    next.run(Request::from_parts(parts, body)).await
+    let response = next.run(Request::from_parts(parts, body)).await;
+    let (parts, body) = response.into_parts();
+    // Streaming exports/downloads still occupy resources after the handler has
+    // returned. Retain admission until the response finishes or is dropped.
+    let stream = futures_util::stream::unfold(
+        (body.into_data_stream(), (_account, _permit, _large)),
+        |(mut body, permits)| async move {
+            use futures_util::StreamExt;
+            body.next().await.map(|chunk| (chunk, (body, permits)))
+        },
+    );
+    Response::from_parts(parts, axum::body::Body::from_stream(stream))
 }
 
 #[cfg(test)]

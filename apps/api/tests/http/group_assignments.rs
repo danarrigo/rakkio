@@ -1,6 +1,7 @@
 use super::groups::{call, create, detail, fixture, invite, join};
 use super::*;
 use serde_json::{Value, json};
+use uuid::Uuid;
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn shared_assignments_have_independent_private_progress_and_keep_completed_work(
@@ -386,7 +387,7 @@ async fn leaving_purges_progress_sharing_and_rejoining_requires_fresh_membership
         &r,
         alice,
         &g,
-        json!({"type":"leave","expected_membership_version":old["group"]["my_membership_version"]}),
+        json!({"kind":"leave","expected_membership_version":old["group"]["my_membership_version"]}),
     )
     .await?;
     assert_eq!(s, StatusCode::OK, "{b}");
@@ -528,6 +529,69 @@ async fn group_content_reservations_serialize_at_global_limit_and_full_group_pur
             .await?,
         0
     );
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn streaming_account_export_rechecks_membership_before_delivering_shared_definitions(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    use super::groups::{action, member};
+    use futures_util::TryStreamExt;
+    let (r, store, [owner, alice, bob, _]) = fixture(&pool).await?;
+    let g = create(&r, owner).await?;
+    enroll(&r, owner, alice, &g, "alice").await?;
+    let a = publish(&r, owner, &g).await?;
+    assert_eq!(progress(&r, alice, &g, &a, true).await?.0, StatusCode::OK);
+    let own: Value = serde_json::from_slice(&store.export_json(alice).await?)?;
+    assert_eq!(own["group_assignments"][0]["assignment"]["id"], a["id"]);
+    assert!(own["group_assignments"][0]["my_progress"]["completed_at"].is_string());
+    let outsider: Value = serde_json::from_slice(&store.export_json(bob).await?)?;
+    assert_eq!(outsider["group_assignments"], json!([]));
+    let stream = store.export_json_stream(alice).await?;
+    futures_util::pin_mut!(stream);
+    let mut bytes = stream.try_next().await?.unwrap().to_vec();
+    let d = detail(&r, owner, &g).await?;
+    let m = member(&d, "alice");
+    let (s, b) = action(
+        &r,
+        owner,
+        &g,
+        json!({"kind":"remove","membership_id":m["id"],"expected_membership_version":m["version"]}),
+    )
+    .await?;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    while let Some(chunk) = stream.try_next().await? {
+        bytes.extend_from_slice(&chunk);
+    }
+    let exported: Value = serde_json::from_slice(&bytes)?;
+    assert_eq!(exported["group_assignments"], json!([]));
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn streaming_download_holds_account_admission_until_body_is_consumed_or_dropped(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (r, _, [owner, _, _, _]) = fixture(&pool).await?;
+    let request = || {
+        Request::builder()
+            .uri("/api/v1/exports/json")
+            .header(DEVELOPMENT_USER_HEADER, owner.to_string())
+            .body(Body::empty())
+            .unwrap()
+    };
+    let first = r.clone().oneshot(request()).await?;
+    assert_eq!(first.status(), StatusCode::OK);
+    let busy = r.clone().oneshot(request()).await?;
+    assert_eq!(busy.status(), StatusCode::TOO_MANY_REQUESTS);
+    drop(busy);
+    drop(first);
+    let available = r.clone().oneshot(request()).await?;
+    assert_eq!(available.status(), StatusCode::OK);
+    let bytes = to_bytes(available.into_body(), 1024 * 1024).await?;
+    let json: Value = serde_json::from_slice(&bytes)?;
+    assert_eq!(json["group_assignments"], json!([]));
     Ok(())
 }
 

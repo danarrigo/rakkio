@@ -1,3 +1,5 @@
+use axum::body::Bytes;
+use futures_util::{Stream, TryStreamExt};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -9,14 +11,64 @@ use crate::{
 
 impl Store {
     pub async fn export_json(&self, user_id: Uuid) -> AppResult<Vec<u8>> {
+        self.export_json_stream(user_id)
+            .await?
+            .map_ok(|bytes| bytes.to_vec())
+            .try_concat()
+            .await
+    }
+
+    // Shared definitions can span many group budgets. Stream bounded pages rather
+    // than buffering all authorized groups into one potentially huge allocation.
+    pub async fn export_json_stream(
+        &self,
+        user_id: Uuid,
+    ) -> AppResult<impl Stream<Item = AppResult<Bytes>> + Send + 'static + use<>> {
         let bundle = self.export_bundle(user_id).await?;
-        serde_json::to_vec_pretty(&bundle).map_err(|error| {
-            tracing::error!(error = ?error, "failed to serialize account export");
-            AppError::InvalidRequest {
-                status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                message: "could not create account export".to_owned(),
-            }
-        })
+        let mut prefix = serde_json::to_vec_pretty(&bundle).map_err(|_| export_error())?;
+        prefix.pop(); // serde_json emits a complete object ending with '}'.
+        prefix.extend_from_slice(b",\"group_assignments\":[");
+        let state = JsonExportState {
+            store: self.clone(),
+            user: user_id,
+            prefix: Some(prefix),
+            cursor: None,
+            first: true,
+            finished: false,
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(120),
+        };
+        Ok(futures_util::stream::try_unfold(
+            state,
+            |mut state| async move {
+                if state.finished {
+                    return Ok(None);
+                }
+                if std::time::Instant::now() > state.deadline {
+                    return Err(export_error());
+                }
+                if let Some(prefix) = state.prefix.take() {
+                    return Ok(Some((Bytes::from(prefix), state)));
+                }
+                let rows = state
+                    .store
+                    .group_assignment_export_page(state.user, state.cursor)
+                    .await?;
+                if rows.is_empty() {
+                    state.finished = true;
+                    return Ok(Some((Bytes::from_static(b"]}"), state)));
+                }
+                state.cursor = rows.last().map(|row| row.id);
+                let mut bytes = Vec::new();
+                for row in rows {
+                    if !state.first {
+                        bytes.push(b',');
+                    }
+                    state.first = false;
+                    serde_json::to_writer(&mut bytes, &row.value).map_err(|_| export_error())?;
+                }
+                Ok(Some((Bytes::from(bytes), state)))
+            },
+        ))
     }
 
     pub async fn export_tasks_csv(&self, user_id: Uuid) -> AppResult<Vec<u8>> {
@@ -272,6 +324,21 @@ impl Store {
     }
 }
 
+fn export_error() -> AppError {
+    AppError::InvalidRequest {
+        status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Could not finish the account export. Please download it again.".into(),
+    }
+}
+struct JsonExportState {
+    store: Store,
+    user: Uuid,
+    prefix: Option<Vec<u8>>,
+    cursor: Option<Uuid>,
+    first: bool,
+    finished: bool,
+    deadline: std::time::Instant,
+}
 #[derive(Serialize)]
 struct AccountExport {
     group_assignment_progress: Vec<serde_json::Value>,
