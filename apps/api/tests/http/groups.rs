@@ -338,7 +338,7 @@ async fn code_approval_rechecks_revocation_and_does_not_auto_enroll(
     let group = create(&router, owner).await?;
     let code = invite(&router, owner, &group, "code", None, 2).await?;
     let credential = code["credential"].as_str().unwrap();
-    assert_eq!(credential.len(), 10);
+    assert_eq!(credential.len(), 12);
     let stored: Vec<u8> =
         sqlx::query_scalar("SELECT secret_hash FROM group_invitations WHERE id=$1")
             .bind(code["invitation"]["id"].as_str().unwrap().parse::<Uuid>()?)

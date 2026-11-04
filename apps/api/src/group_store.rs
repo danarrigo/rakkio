@@ -551,7 +551,7 @@ async fn invitation(
                     .filter(|c| !matches!(c, ' ' | '-'))
                     .map(|c| c.to_ascii_uppercase())
                     .collect();
-                if code.len() != 10
+                if code.len() != 12
                     || !code
                         .bytes()
                         .all(|b| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(&b))
@@ -682,7 +682,7 @@ impl Store {
                 let random = oauth2::CsrfToken::new_random_len(32);
                 let bytes = Sha256::digest(random.secret().as_bytes());
                 Some(
-                    bytes[..10]
+                    bytes[..12]
                         .iter()
                         .map(|b| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ"[usize::from(b & 31)] as char)
                         .collect(),
