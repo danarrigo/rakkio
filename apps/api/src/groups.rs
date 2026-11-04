@@ -214,7 +214,7 @@ fn mutation(state: &AppState, user: Uuid, expected: Uuid) -> AppResult<()> {
         .check_key(&format!("groups:{user}"))
 }
 
-#[utoipa::path(get,path="/api/v1/groups/capability",responses((status=200,body=GroupCapability),(status=401,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(get,operation_id="groups_capability",path="/api/v1/groups/capability",responses((status=200,body=GroupCapability),(status=401,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn capability(
     State(state): State<AppState>,
     CurrentUser(_user): CurrentUser,
@@ -223,7 +223,7 @@ pub async fn capability(
         enabled: state.groups_enabled,
     })
 }
-#[utoipa::path(get,path="/api/v1/groups",responses((status=200,body=Vec<GroupSummary>),(status=401,body=ErrorResponse),(status=503,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(get,operation_id="groups_list",path="/api/v1/groups",responses((status=200,body=Vec<GroupSummary>),(status=401,body=ErrorResponse),(status=503,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn list(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -231,7 +231,7 @@ pub async fn list(
     available(&state)?;
     Ok(Json(state.store.list_groups(user).await?))
 }
-#[utoipa::path(post,path="/api/v1/groups",request_body=CreateGroup,responses((status=200,body=GroupSummary),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse),(status=503,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_create",path="/api/v1/groups",request_body=CreateGroup,responses((status=200,body=GroupSummary),(status=401,body=ErrorResponse),(status=403,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse),(status=503,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn create(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -240,7 +240,7 @@ pub async fn create(
     mutation(&state, user, body.expected_user_id)?;
     Ok(Json(state.store.create_group(user, body).await?))
 }
-#[utoipa::path(get,path="/api/v1/groups/{group_id}",params(("group_id"=Uuid,Path)),responses((status=200,body=GroupDetail),(status=404,body=ErrorResponse),(status=503,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(get,operation_id="groups_detail",path="/api/v1/groups/{group_id}",params(("group_id"=Uuid,Path)),responses((status=200,body=GroupDetail),(status=404,body=ErrorResponse),(status=503,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn detail(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -249,7 +249,7 @@ pub async fn detail(
     available(&state)?;
     Ok(Json(state.store.group_detail(user, id).await?))
 }
-#[utoipa::path(post,path="/api/v1/groups/{group_id}/actions",params(("group_id"=Uuid,Path)),request_body=GroupMutation,responses((status=200,body=GroupMutationResult),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_mutate",path="/api/v1/groups/{group_id}/actions",params(("group_id"=Uuid,Path)),request_body=GroupMutation,responses((status=200,body=GroupMutationResult),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn mutate(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -259,7 +259,7 @@ pub async fn mutate(
     mutation(&state, user, body.expected_user_id)?;
     Ok(Json(state.store.mutate_group(user, id, body).await?))
 }
-#[utoipa::path(post,path="/api/v1/groups/{group_id}/invitations",params(("group_id"=Uuid,Path)),request_body=IssueGroupInvitation,responses((status=200,body=IssuedGroupInvitation),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_invite",path="/api/v1/groups/{group_id}/invitations",params(("group_id"=Uuid,Path)),request_body=IssueGroupInvitation,responses((status=200,body=IssuedGroupInvitation),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn invite(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -271,7 +271,7 @@ pub async fn invite(
         state.store.issue_group_invitation(user, id, body).await?,
     ))
 }
-#[utoipa::path(post,path="/api/v1/groups/{group_id}/invitations/{invitation_id}/revoke",params(("group_id"=Uuid,Path),("invitation_id"=Uuid,Path)),request_body=RevokeGroupInvitation,responses((status=200,body=bool),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_revoke",path="/api/v1/groups/{group_id}/invitations/{invitation_id}/revoke",params(("group_id"=Uuid,Path),("invitation_id"=Uuid,Path)),request_body=RevokeGroupInvitation,responses((status=200,body=bool),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn revoke(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -285,7 +285,7 @@ pub async fn revoke(
         .await?;
     Ok(Json(true))
 }
-#[utoipa::path(get,path="/api/v1/groups/invitations/inbox",responses((status=200,body=GroupInbox),(status=401,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(get,operation_id="groups_inbox",path="/api/v1/groups/invitations/inbox",responses((status=200,body=GroupInbox),(status=401,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn inbox(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -293,7 +293,7 @@ pub async fn inbox(
     available(&state)?;
     Ok(Json(state.store.group_invitation_inbox(user).await?))
 }
-#[utoipa::path(post,path="/api/v1/groups/invitations/{invitation_id}/decline",params(("invitation_id"=Uuid,Path)),request_body=RevokeGroupInvitation,responses((status=200,body=bool),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_decline",path="/api/v1/groups/invitations/{invitation_id}/decline",params(("invitation_id"=Uuid,Path)),request_body=RevokeGroupInvitation,responses((status=200,body=bool),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn decline(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -307,7 +307,7 @@ pub async fn decline(
         .await?;
     Ok(Json(true))
 }
-#[utoipa::path(post,path="/api/v1/groups/join/preview",request_body=GroupInviteReference,responses((status=200,body=GroupInvitePreview),(status=404,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_preview",path="/api/v1/groups/join/preview",request_body=GroupInviteReference,responses((status=200,body=GroupInvitePreview),(status=404,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn preview(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
@@ -321,7 +321,7 @@ pub async fn preview(
         state.store.preview_group_invitation(user, body).await?,
     ))
 }
-#[utoipa::path(post,path="/api/v1/groups/join",request_body=JoinGroup,responses((status=200,body=GroupJoinResult),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
+#[utoipa::path(post,operation_id="groups_join",path="/api/v1/groups/join",request_body=JoinGroup,responses((status=200,body=GroupJoinResult),(status=403,body=ErrorResponse),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse),(status=422,body=ErrorResponse)),tag="groups",security(("session_cookie"=[]),("development_user"=[])))]
 pub async fn join(
     State(state): State<AppState>,
     CurrentUser(user): CurrentUser,
