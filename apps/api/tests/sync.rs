@@ -630,9 +630,23 @@ struct DispatcherFixture {
     server: tokio::task::JoinHandle<()>,
 }
 
+impl DispatcherFixture {
+    fn storage_root(&self) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("rakkio-dispatcher-{}", self.user_id))
+    }
+    fn start(&self) -> anyhow::Result<SyncDispatcher> {
+        let storage = prosepect_api::file_storage::FileStorage::new(
+            &prosepect_api::config::ObjectStorageConfig::Local {
+                root: self.storage_root().to_string_lossy().into_owned(),
+            },
+        )?;
+        Ok(SyncDispatcher::start(self.service.clone(), storage))
+    }
+}
 impl Drop for DispatcherFixture {
     fn drop(&mut self) {
         self.server.abort();
+        let _ = std::fs::remove_dir_all(self.storage_root());
     }
 }
 
@@ -743,7 +757,7 @@ async fn wait_for_dispatcher_job(pool: &PgPool, id: Uuid, status: &str) -> anyho
 async fn dispatcher_retries_future_failure_without_manual_wake(pool: PgPool) -> anyhow::Result<()> {
     let fixture = dispatcher_fixture(&pool, 1).await?;
     let job = dispatcher_job(&fixture, "fail-once").await?;
-    let dispatcher = SyncDispatcher::start(fixture.service.clone());
+    let dispatcher = fixture.start()?;
     assert_eq!(wait_for_dispatcher_job(&pool, job, "failed").await?, 1);
     let future: bool =
         sqlx::query_scalar("SELECT available_at > NOW() FROM sync_jobs WHERE id = $1")
@@ -783,7 +797,7 @@ async fn dispatcher_startup_drains_due_retries_but_never_resurrects_terminal_job
         .bind(later)
         .execute(&pool)
         .await?;
-    let dispatcher = SyncDispatcher::start(fixture.service.clone());
+    let dispatcher = fixture.start()?;
     assert_eq!(wait_for_dispatcher_job(&pool, due, "succeeded").await?, 8);
     // A later timer cycle must neither replay the successful eighth attempt nor revive failures.
     assert_eq!(wait_for_dispatcher_job(&pool, later, "succeeded").await?, 1);
@@ -807,7 +821,7 @@ async fn dispatcher_final_failure_does_not_promise_another_retry(
         .bind(job)
         .execute(&pool)
         .await?;
-    let dispatcher = SyncDispatcher::start(fixture.service.clone());
+    let dispatcher = fixture.start()?;
     tokio::time::timeout(std::time::Duration::from_secs(15), async {
         let mut poll = tokio::time::interval(std::time::Duration::from_millis(25));
         loop {
@@ -848,7 +862,7 @@ async fn dispatcher_waits_after_database_error_then_recovers_without_wake(
     .execute(&pool)
     .await?;
     let started = std::time::Instant::now();
-    let dispatcher = SyncDispatcher::start(fixture.service.clone());
+    let dispatcher = fixture.start()?;
     assert_eq!(wait_for_dispatcher_job(&pool, job, "succeeded").await?, 1);
     assert!(
         started.elapsed() >= std::time::Duration::from_secs(5),
@@ -871,7 +885,7 @@ async fn dispatcher_shutdown_finishes_current_job_without_starting_another(
     let first = dispatcher_job(&fixture, "shutdown-first").await?;
     let second = dispatcher_job(&fixture, "shutdown-second").await?;
     let blocked_response = fixture.first_response.acquire().await?;
-    let dispatcher = SyncDispatcher::start(fixture.service.clone());
+    let dispatcher = fixture.start()?;
     tokio::time::timeout(std::time::Duration::from_secs(15), async {
         let mut poll = tokio::time::interval(std::time::Duration::from_millis(25));
         while fixture.requests.load(Ordering::SeqCst) == 0 {
@@ -913,7 +927,7 @@ async fn dispatcher_coalesces_wakes_and_bounds_each_drain(pool: PgPool) -> anyho
     sqlx::query("LOCK TABLE oauth_login_attempts IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *startup_lock)
         .await?;
-    let dispatcher = SyncDispatcher::start(fixture.service.clone());
+    let dispatcher = fixture.start()?;
     for _ in 0..100 {
         dispatcher.wake();
     }
@@ -1581,7 +1595,6 @@ async fn delete_with_provider(
         invite_only: false,
         groups_enabled: false,
         trust_proxy_headers: false,
-        trusted_proxy_ip_header: Default::default(),
         login_rate_limiter: LoginRateLimiter::default(),
         action_rate_limiter: LoginRateLimiter::default(),
         request_limits: Default::default(),

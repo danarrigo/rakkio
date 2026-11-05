@@ -204,7 +204,6 @@ fn app_state(f: &Fixture) -> anyhow::Result<prosepect_api::app::AppState> {
         invite_only: false,
         groups_enabled: false,
         trust_proxy_headers: false,
-        trusted_proxy_ip_header: Default::default(),
         login_rate_limiter: LoginRateLimiter::default(),
         action_rate_limiter: LoginRateLimiter::default(),
         request_limits: Default::default(),
