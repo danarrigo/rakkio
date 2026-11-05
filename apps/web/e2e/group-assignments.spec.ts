@@ -414,6 +414,34 @@ test('assignment editor and open work stay readable in a wide light layout', asy
   })
 })
 
+test('closing moves shared work to history without completing the member', async ({ page }) => {
+  const state = await fixture(page)
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page
+    .getByRole('combobox', { name: 'Assignment lifecycle', exact: true })
+    .selectOption('closed')
+  await page.getByRole('button', { name: 'Save assignment', exact: true }).click()
+  await expect(page.getByText('No open assignments.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Closed history', exact: true }).click()
+  const card = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: 'Algorithms homework', exact: true }) })
+  await expect(card.getByRole('button', { name: 'Mark complete', exact: true })).toBeVisible()
+  expect(state.writes[0]?.body.state).toBe('closed')
+})
+
+test('navigation does not silently discard an assignment draft', async ({ page }) => {
+  await fixture(page)
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.getByLabel('Assignment title', { exact: true }).fill('Keep this draft')
+  page.once('dialog', (dialog) => dialog.dismiss())
+  await page.getByRole('link', { name: 'Back to Groups', exact: true }).click()
+  await expect(page.getByLabel('Assignment title', { exact: true })).toHaveValue('Keep this draft')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('link', { name: 'Back to Groups', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Groups', exact: true })).toBeVisible()
+})
+
 test('disabled groups do not fetch assignment data or offer mutations', async ({ page }) => {
   const state = await fixture(page, { enabled: false })
   await expect(

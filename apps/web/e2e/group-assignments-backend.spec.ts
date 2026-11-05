@@ -98,6 +98,7 @@ test('real backend: shared assignments preserve independent progress through edi
     await expect(student.getByRole('heading', { name: title, exact: true })).toBeVisible()
     await student.getByRole('button', { name: 'Mark complete', exact: true }).click()
     await expect(student.getByRole('button', { name: 'Reopen my work', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click()
     await page.getByRole('button', { name: 'View shared progress', exact: true }).click()
     await expect(
       page.getByText('No members are sharing progress for this assignment.', { exact: true }),
@@ -129,7 +130,9 @@ test('real backend: shared assignments preserve independent progress through edi
       page.getByText('No members are sharing progress for this assignment.', { exact: true }),
     ).toBeVisible()
     await page.getByRole('button', { name: 'Edit', exact: true }).click()
-    await page.getByLabel('Assignment lifecycle', { exact: true }).selectOption('closed')
+    await page
+      .getByRole('combobox', { name: 'Assignment lifecycle', exact: true })
+      .selectOption('closed')
     await page.getByRole('button', { name: 'Save assignment', exact: true }).click()
     await expect(page.getByText('No open assignments.', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Closed history', exact: true }).click()

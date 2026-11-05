@@ -1,6 +1,6 @@
 # Groups
 
-Status: staged implementation. Handles and gated membership are merged through PR #39. Shared assignments and private progress are in draft PR #40; calendar integration and Discord group agendas remain subsequent phases in [GROUPS-PLAN.md](GROUPS-PLAN.md). Do not describe the whole feature as released.
+Status: staged implementation. Handles and gated membership are merged through PR #39. Shared assignments and private progress are implemented in PR #40; calendar integration and Discord group agendas remain subsequent phases in [GROUPS-PLAN.md](GROUPS-PLAN.md). Do not describe the whole feature as released.
 
 ## Rollout
 
