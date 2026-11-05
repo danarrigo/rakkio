@@ -232,7 +232,7 @@ impl Store {
         a.leader(user)?;
         let old = event(&mut tx, group, id).await?;
         version(old.version, expected)?;
-        let result=sqlx::query_as("UPDATE group_events SET deleted_at=NOW(),undo_until=NOW()+INTERVAL '60 seconds',deleted_membership_epoch=$3,version=version+1 WHERE group_id=$1 AND id=$2 RETURNING id,title,version,undo_until")
+        let result=sqlx::query_as("UPDATE group_events SET deleted_at=clock_timestamp(),undo_until=clock_timestamp()+INTERVAL '60 seconds',deleted_membership_epoch=$3,version=version+1 WHERE group_id=$1 AND id=$2 RETURNING id,title,version,undo_until")
    .bind(group).bind(id).bind(a.membership_epoch).fetch_one(&mut *tx).await?;
         tx.commit().await?;
         Ok(result)
@@ -248,7 +248,7 @@ impl Store {
         lock_users(&mut tx, user, vec![]).await?;
         let a = write_access(&mut tx, user, group).await?;
         a.leader(user)?;
-        let restored=sqlx::query("UPDATE group_events SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE group_id=$1 AND id=$2 AND version=$3 AND undo_until>NOW() AND deleted_membership_epoch=$4")
+        let restored=sqlx::query("UPDATE group_events SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE group_id=$1 AND id=$2 AND version=$3 AND undo_until>clock_timestamp() AND deleted_membership_epoch=$4")
     .bind(group).bind(id).bind(expected).bind(a.membership_epoch).execute(&mut *tx).await?;
         if restored.rows_affected() != 1 {
             return Err(AppError::Conflict(
@@ -271,7 +271,7 @@ impl Store {
             .await?;
         read_access(&mut tx, user, group).await?.leader(user)?;
         let limit = page.normalized_limit();
-        let mut items:Vec<GroupEventUndo>=sqlx::query_as("SELECT id,title,version,undo_until FROM group_events WHERE group_id=$1 AND undo_until>NOW() AND ($2::uuid IS NULL OR id<$2) ORDER BY id DESC LIMIT $3").bind(group).bind(page.cursor).bind(limit+1).fetch_all(&mut *tx).await?;
+        let mut items:Vec<GroupEventUndo>=sqlx::query_as("SELECT id,title,version,undo_until FROM group_events WHERE group_id=$1 AND undo_until>clock_timestamp() AND ($2::uuid IS NULL OR id<$2) ORDER BY id DESC LIMIT $3").bind(group).bind(page.cursor).bind(limit+1).fetch_all(&mut *tx).await?;
         let more = items.len() as i64 > limit;
         if more {
             items.pop();

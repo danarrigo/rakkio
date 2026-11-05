@@ -550,11 +550,11 @@ impl Store {
                 if confirmation != "DELETE GROUP" {
                     return Err(AppError::Validation("Confirm with DELETE GROUP.".into()));
                 }
-                sqlx::query("UPDATE groups SET deleted_at=NOW(),undo_until=NOW()+INTERVAL '60 seconds',deleted_membership_epoch=membership_epoch,version=version+1 WHERE id=$1").bind(id).execute(&mut *tx).await?;
+                sqlx::query("UPDATE groups SET deleted_at=clock_timestamp(),undo_until=clock_timestamp()+INTERVAL '60 seconds',deleted_membership_epoch=membership_epoch,version=version+1 WHERE id=$1").bind(id).execute(&mut *tx).await?;
             }
             GroupAction::Restore => {
                 a.owner(user)?;
-                let changed=sqlx::query("UPDATE groups SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE id=$1 AND undo_until>NOW() AND deleted_membership_epoch=membership_epoch").bind(id).execute(&mut *tx).await?;
+                let changed=sqlx::query("UPDATE groups SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE id=$1 AND undo_until>clock_timestamp() AND deleted_membership_epoch=membership_epoch").bind(id).execute(&mut *tx).await?;
                 if changed.rows_affected() != 1 {
                     return Err(AppError::Conflict("Undo expired or group membership changed. The group cannot be restored safely.".into()));
                 }
