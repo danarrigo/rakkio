@@ -98,10 +98,10 @@ impl FileStorage {
     }
 
     pub async fn delete(&self, key: &str) -> Result<()> {
-        self.store
-            .delete(&Path::from(key))
-            .await
-            .context("failed to delete file")
+        match self.store.delete(&Path::from(key)).await {
+            Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
+            Err(error) => Err(error).context("failed to delete file"),
+        }
     }
 }
 
@@ -172,6 +172,17 @@ mod tests {
             .expect("S3 storage should produce a signed URL");
 
         assert!(url.starts_with("http://localhost:9000/prosepect/test-object?"));
+    }
+
+    #[tokio::test]
+    async fn deleting_an_absent_local_object_is_idempotent() {
+        let root = std::env::temp_dir().join(format!("rakkio-storage-{}", uuid::Uuid::now_v7()));
+        let storage = FileStorage::new(&ObjectStorageConfig::Local {
+            root: root.to_string_lossy().into_owned(),
+        })
+        .unwrap();
+        storage.delete("never-created").await.unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

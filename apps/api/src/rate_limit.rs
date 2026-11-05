@@ -156,13 +156,12 @@ fn client_key(
     if trust_proxy_headers {
         let mut values = headers.get_all(proxy_header.name()).iter();
         let first = values.next();
-        if values.next().is_none() {
-            if let Some(ip) = first
+        if values.next().is_none()
+            && let Some(ip) = first
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.trim().parse::<IpAddr>().ok())
-            {
-                return ip.to_string();
-            }
+        {
+            return ip.to_string();
         }
     }
     peer.map(|peer| peer.ip().to_string())

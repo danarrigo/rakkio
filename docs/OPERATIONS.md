@@ -32,7 +32,7 @@ INSERT INTO account_invites (id, email)
 VALUES (gen_random_uuid(), LOWER('person@example.com'));
 ```
 
-Only set `TRUST_PROXY_HEADERS=true` when untrusted clients cannot bypass the hosting platform or configured reverse proxy.
+Only set `TRUST_PROXY_HEADERS=true` when untrusted clients cannot bypass the hosting platform or configured reverse proxy. `TRUSTED_PROXY_IP_HEADER` selects exactly one ingress-overwritten IP header: `cf-connecting-ip` on Render, or `x-forwarded-for` behind the supplied Caddy configuration. Render appends to XFF, so its leftmost entry is not trusted. The default automatically selects CF on Render (`RENDER=true`) and sanitized single-IP XFF elsewhere. Forwarded chains, duplicate/invalid selected headers and `X-Real-IP` are not trusted; missing/invalid identity falls back to the socket peer. Do not pass an attacker-controlled selected header through your proxy.
 
 For public registration, keep `INVITE_ONLY=true` until the Privacy Policy and Terms are live, Google OAuth production verification is complete, backup restoration has been tested, alerts are enabled, and production smoke tests pass. Then set `INVITE_ONLY=false` while retaining `MAX_USER_ACCOUNTS`. The account limit is checked under a PostgreSQL advisory transaction lock: new registrations are rejected at capacity, while existing users remain able to sign in. Hosted sign-in requires affirmative acceptance of the current Terms and Privacy Policy and stores the accepted versions and age confirmation in `legal_acceptances`.
 
@@ -136,6 +136,10 @@ The hosted beta has bounded API capacity (`apps/api/src/request_limits.rs`): 32 
 
 Ordinary JSON bodies are limited to 1 MiB; Todoist imports have an 8 MiB encoded-body limit as well as their existing task-count limit. Upload requests allow only the configured file maximum plus 16 KiB of multipart overhead. File bytes and UUID metadata are bounded as they stream in, before storage reservation; duplicate/unknown fields are rejected. JSON and multipart body reading each have a 60-second deadline before mutation processing. Oversized bodies return 413. The configured attachment-storage quotas are unchanged.
 
+Client-identity rate-limit maps hard-cap at 10,000 active buckets and 128-byte keys, failing closed instead of evicting live identities. Google authorization attempts are serialized at admission and capped at five per browser and 5,000 globally; expired attempts are cleaned before admission. Consuming a flow frees its slot.
+
+Migration `0032_pending_file_uploads.sql` makes new attachment reservations durable and hidden until PUT confirmation. Pending/uncertain writes remain quota-charged and excluded from listings, downloads and exports. PUT has a 60-second deadline; unconfirmed uploads have a five-minute grace period before bounded cleanup, which releases their records/quota only after storage deletion succeeds. Storage failures back off and retain the reservation. Cleanup runs while the API is awake, through the standalone worker and before upload/erasure requests; sleeping hosts are not guaranteed an exact cleanup time. Account erasure blocks new uploads and returns 409 while active/uncertain writes remain. Retry erasure after cleanup; do not delete reservation rows manually to bypass it. Existing ready files and export/Undo formats are unchanged. This prevents new lifecycle leaks; it does not inventory or remove historical orphan objects.
+
 Migration `0026_workspace_content_limits.sql` adds transactional logical-content counters covering projects, tasks, calendars, events, notes, labels, attachment metadata and saved views, including import/provider writers. Defaults are 16 MiB/20,000 records per account and 256 MiB/100,000 records shared. These are serialized-row budgets, **not physical database-size or R2-byte measurements**; indexes, history, jobs and database bloat still require monitoring and capacity planning. Trusted operators can review the singleton `workspace_content_limits` row before a deliberate capacity change. Do not raise limits automatically to silence errors.
 
 Existing content is backfilled, not removed. Growth over budget returns an actionable `content_quota_exceeded` error; deletion and shrinking remain possible. Private per-transaction deltas are applied to shared counters only at commit, preserving unrelated writers during an open deletion or Undo; failed commits roll back content and counters together. Backfill holds a brief write lock while installing triggers (a ten-second lock-acquisition timeout fails the migration safely instead of silently missing writes). Future migrations changing tracked row shapes must recount the derived counters in the same migration. Database serialization/deadlock aborts return 409 rather than exposing internal errors; preserve drafts and refresh, never blindly replay a write.
@@ -154,7 +158,7 @@ The webhook has four dedicated admission slots, a 64 KiB signed raw-body cap and
 
 - `GET /health` checks the API process.
 - `GET /ready` checks PostgreSQL.
-- `GET /metrics` returns Prometheus text metrics.
+- `GET /metrics` returns Prometheus text metrics only to a session-authenticated Operations owner configured in `ADMIN_USER_IDS` (401 anonymously, 403 for ordinary accounts). It is not a public scrape endpoint. Keep any metrics collector private and do not put session credentials in URLs or logs.
 - API logs carry request IDs and structured production logs.
 
 Important metrics include:
