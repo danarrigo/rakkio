@@ -25,6 +25,7 @@ CREATE TABLE group_assignments (
         OR (deleted_at IS NOT NULL AND undo_until>deleted_at AND deleted_membership_epoch IS NOT NULL))
 );
 CREATE INDEX group_assignments_group_idx ON group_assignments(group_id,id);
+CREATE INDEX group_assignments_lifecycle_idx ON group_assignments(group_id,state,id) WHERE deleted_at IS NULL;
 CREATE INDEX group_assignments_cleanup_idx ON group_assignments(undo_until) WHERE deleted_at IS NOT NULL;
 
 CREATE TABLE group_assignment_progress (

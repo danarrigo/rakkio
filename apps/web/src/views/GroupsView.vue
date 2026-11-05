@@ -462,6 +462,12 @@ onBeforeUnmount(() => {
                 Edit group
               </button>
             </div>
+            <RouterLink
+              v-if="!editing && !groups.busy"
+              :to="{ name: 'group-assignments', params: { groupId: group.id } }"
+              class="secondary-button mt-4 inline-flex"
+              >View assignments</RouterLink
+            >
             <form
               v-if="editing"
               class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800"

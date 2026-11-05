@@ -59,13 +59,19 @@ The existing `MAX_USER_ACCOUNTS=100` hosted admission cap is unchanged. Group in
 
 ## Shared assignments and private progress (phase 3)
 
-- Leaders publish one canonical assignment, not personal task copies. Titles are limited to 240 characters and descriptions to 10,000. Assignments do not reserve work time and do not sync to Google Tasks.
-- A date-only deadline uses 23:59 in the group's timezone at publication. That timezone is retained through later group-setting changes; an explicit deadline-timezone edit is needed to change it. Nonexistent DST local times are rejected; ambiguous times use PostgreSQL's standard-time interpretation.
+- Leaders publish one canonical assignment, not personal task copies. Titles are limited to 240 characters and descriptions to 10,000. Shared instructions allow sanitized Markdown formatting and explicitly opened links, not automatic external media or interactive HTML. Assignments do not reserve work time and do not sync to Google Tasks.
+- A date-only deadline uses 23:59. The deadline timezone defaults to the group's timezone at publication; an explicit IANA timezone can be supplied. The UI sends the displayed choice, so concurrent group-setting changes cannot silently reinterpret a draft. The saved timezone is retained through later group-setting changes; an explicit deadline-timezone edit is needed to change it. Nonexistent DST local times are rejected; ambiguous times use PostgreSQL's standard-time interpretation.
 - Open/closed lifecycle is distinct from each member's completion. Closing preserves history and progress without marking anyone complete. Leader edits preserve completion and expose that the definition changed; members can reopen their own work.
 - Progress is sparse and bound to the current membership identity. Writes check both assignment and individual-progress versions. A stale account, definition, progress version or previous membership cannot silently overwrite current work.
 - Sharing is off initially. Enabling it requires the separate notice `2026-11-04-progress`: the owner and all current/future leaders can see progress for that group, never peers. Turning it off removes live leader access; leaving/removal purges the progress and sharing state.
 - Only opted-in members appear in leader reports. No private-progress counts, activity, roster versions or public membership epochs reveal unshared changes. Exports never include anybody else's progress, even when the exporter is a leader.
 - Assignment deletion is confirmed and recoverable for 60 seconds, with a version/membership-epoch-bound receipt. No permanent-delete fallback exists. Recoverable deletions still consume capacity until bounded purge; membership changes prevent stale Undo.
+
+### Assignment interface
+
+From a selected group, open **View assignments**. Open work and closed history are independently paginated, newest first. Leaders can publish/edit/close shared definitions and view only opted-in progress; all members can complete/reopen their own work. Sharing requires a separate, initially unchecked acknowledgement and explicit action. Refresh clears that acknowledgement and any open leader report; it never copies a server notice version into consent.
+
+Conflicts retain the assignment draft. Refresh fetches the edited definition by exact ID, even when it is outside the current list page, and adopting a changed version requires explicit confirmation after reviewing current values. Lost access retains a local draft for copying but disables saving. Account changes clear private state. An unconfirmed write is never retried automatically; refresh first to reconcile. A confirmed save followed by refresh failure is distinguished from an unknown result. Navigation warns about unsaved drafts or in-flight changes.
 
 ### Shared content capacity
 

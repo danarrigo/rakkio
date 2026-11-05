@@ -587,7 +587,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["group_assignments_get"];
         put: operations["group_assignments_update"];
         post?: never;
         delete?: never;
@@ -1547,6 +1547,7 @@ export interface components {
             timezone: string;
         };
         CreateGroupAssignment: {
+            deadline_timezone?: string | null;
             description?: string;
             /** Format: date */
             due_on?: string | null;
@@ -1853,6 +1854,8 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        /** @enum {string} */
+        GroupAssignmentFilter: "open" | "closed";
         GroupAssignmentPage: {
             items: components["schemas"]["GroupAssignment"][];
             /** Format: uuid */
@@ -4179,6 +4182,7 @@ export interface operations {
             query?: {
                 cursor?: string;
                 limit?: number;
+                state?: components["schemas"]["GroupAssignmentFilter"];
             };
             header?: never;
             path: {
@@ -4254,6 +4258,44 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignment"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -128,7 +128,7 @@ function showAllProjects() {
     <RouterLink
       v-if="groups.enabled"
       class="nav-item mt-2"
-      :class="{ active: route.name === 'groups' }"
+      :class="{ active: route.name === 'groups' || route.name === 'group-assignments' }"
       to="/groups"
       @click="emit('close')"
       ><Users :size="17" /><span>Groups</span></RouterLink

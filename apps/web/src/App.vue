@@ -88,7 +88,7 @@ const pageTitle = computed(() => {
   if (route.name === 'files') return 'Files'
   if (route.name === 'operations') return 'Operations'
   if (route.name === 'settings') return 'Settings'
-  if (route.name === 'groups') return 'Groups'
+  if (route.name === 'groups' || route.name === 'group-assignments') return 'Groups'
   return 'Today'
 })
 

@@ -35,6 +35,12 @@ export const router = createRouter({
       meta: { title: 'Groups' },
     },
     {
+      path: '/groups/:groupId/assignments',
+      name: 'group-assignments',
+      component: () => import('./views/GroupAssignmentsView.vue'),
+      meta: { title: 'Group assignments' },
+    },
+    {
       path: '/join',
       name: 'group-join',
       component: () => import('./views/GroupJoinView.vue'),

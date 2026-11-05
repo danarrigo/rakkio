@@ -4,7 +4,7 @@ Status: **implementation approved** by the operator after reviewing the plan. De
 
 Product vocabulary: [CONTEXT.md](../CONTEXT.md). Scope: college-class-style shared planning, not a learning-management system or a copy of a leader's account.
 
-Delivery: phase 1 is merged as PR #38. Phase 2 is implemented for review in PR #39, with server rollout disabled by default; see [GROUPS.md](GROUPS.md) for concrete limits, invitations, roster consent and lifecycle behavior. Shared assignments/progress, calendar composition and Discord group sharing remain subsequent phases, not completed features.
+Delivery: phase 1 is merged as PR #38 and phase 2 as PR #39. Phase 3 shared assignments/private progress is in draft PR #40, with server rollout still disabled by default; see [GROUPS.md](GROUPS.md) for concrete limits, invitations, consent and lifecycle behavior. Calendar composition, Discord group sharing and final release remain subsequent phases, not completed features.
 
 ## 1. Agreed product behavior
 
