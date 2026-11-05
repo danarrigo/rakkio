@@ -18,6 +18,8 @@ use utoipa::OpenApi;
 mod discord;
 #[path = "http/group_assignments.rs"]
 mod group_assignments;
+#[path = "http/group_events.rs"]
+mod group_events;
 #[path = "http/groups.rs"]
 mod groups;
 #[path = "http/handles.rs"]
