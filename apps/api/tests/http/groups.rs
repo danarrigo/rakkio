@@ -2,7 +2,7 @@ use super::*;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-async fn call(
+pub(super) async fn call(
     router: &axum::Router,
     user: Uuid,
     method: &str,
@@ -47,7 +47,7 @@ async fn call(
         },
     ))
 }
-async fn fixture(pool: &PgPool) -> anyhow::Result<(axum::Router, Store, [Uuid; 4])> {
+pub(super) async fn fixture(pool: &PgPool) -> anyhow::Result<(axum::Router, Store, [Uuid; 4])> {
     let store = Store::from_pool(pool.clone());
     let users = [
         Uuid::now_v7(),
@@ -66,7 +66,7 @@ async fn fixture(pool: &PgPool) -> anyhow::Result<(axum::Router, Store, [Uuid; 4
     config.groups_enabled = true;
     Ok((app::build(&config, store.clone())?, store, users))
 }
-async fn create(router: &axum::Router, user: Uuid) -> anyhow::Result<Value> {
+pub(super) async fn create(router: &axum::Router, user: Uuid) -> anyhow::Result<Value> {
     let (status, group) = call(
         router,
         user,
@@ -78,7 +78,11 @@ async fn create(router: &axum::Router, user: Uuid) -> anyhow::Result<Value> {
     assert_eq!(status, StatusCode::OK, "{group}");
     Ok(group)
 }
-async fn detail(router: &axum::Router, user: Uuid, group: &Value) -> anyhow::Result<Value> {
+pub(super) async fn detail(
+    router: &axum::Router,
+    user: Uuid,
+    group: &Value,
+) -> anyhow::Result<Value> {
     let (status, body) = call(
         router,
         user,
@@ -90,7 +94,7 @@ async fn detail(router: &axum::Router, user: Uuid, group: &Value) -> anyhow::Res
     assert_eq!(status, StatusCode::OK, "{body}");
     Ok(body)
 }
-async fn action(
+pub(super) async fn action(
     router: &axum::Router,
     user: Uuid,
     group: &Value,
@@ -105,7 +109,7 @@ async fn action(
     )
     .await
 }
-async fn invite(
+pub(super) async fn invite(
     router: &axum::Router,
     user: Uuid,
     group: &Value,
@@ -127,7 +131,7 @@ async fn invite(
     assert_eq!(status, StatusCode::OK, "{body}");
     Ok(body)
 }
-async fn join(
+pub(super) async fn join(
     router: &axum::Router,
     user: Uuid,
     issued: &Value,
@@ -141,7 +145,7 @@ async fn join(
     body["confirm_roster_visibility"] = json!(true);
     call(router, user, "POST", "/api/v1/groups/join", body).await
 }
-fn member<'a>(view: &'a Value, handle: &str) -> &'a Value {
+pub(super) fn member<'a>(view: &'a Value, handle: &str) -> &'a Value {
     view["members"]
         .as_array()
         .unwrap()

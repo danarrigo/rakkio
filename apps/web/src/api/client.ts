@@ -56,6 +56,11 @@ import type {
   JoinGroup,
   GroupInviteReference,
   RevokeGroupInvitation,
+  CreateGroupAssignment,
+  UpdateGroupAssignment,
+  UpdateAssignmentProgress,
+  UpdateGroupProgressPreferences,
+  GroupAssignmentVersion,
 } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? ''
@@ -218,6 +223,152 @@ export async function previewGroupInvitation(body: GroupInviteReference, signal?
 }
 export async function joinGroup(body: JoinGroup, signal?: AbortSignal) {
   return unwrap(await client.POST('/api/v1/groups/join', { body, signal }))
+}
+
+export async function listGroupAssignments(
+  groupId: string,
+  state: 'open' | 'closed',
+  cursor?: string,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}/assignments', {
+      params: { path: { group_id: groupId }, query: { state, cursor, limit: 25 } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function getGroupAssignment(groupId: string, id: string, signal?: AbortSignal) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}/assignments/{assignment_id}', {
+      params: { path: { group_id: groupId, assignment_id: id } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function createGroupAssignment(
+  groupId: string,
+  body: CreateGroupAssignment,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/assignments', {
+      params: { path: { group_id: groupId } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function updateGroupAssignment(
+  groupId: string,
+  id: string,
+  body: UpdateGroupAssignment,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.PUT('/api/v1/groups/{group_id}/assignments/{assignment_id}', {
+      params: { path: { group_id: groupId, assignment_id: id } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function updateGroupAssignmentProgress(
+  groupId: string,
+  id: string,
+  body: UpdateAssignmentProgress,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/assignments/{assignment_id}/progress', {
+      params: { path: { group_id: groupId, assignment_id: id } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function getGroupAssignmentReport(groupId: string, id: string, signal?: AbortSignal) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}/assignments/{assignment_id}/progress-report', {
+      params: { path: { group_id: groupId, assignment_id: id } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function getGroupProgressPreferences(groupId: string, signal?: AbortSignal) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}/preferences', {
+      params: { path: { group_id: groupId } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function updateGroupProgressPreferences(
+  groupId: string,
+  body: UpdateGroupProgressPreferences,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/preferences', {
+      params: { path: { group_id: groupId } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function getGroupContentUsage(groupId: string, signal?: AbortSignal) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}/content-usage', {
+      params: { path: { group_id: groupId } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function listGroupAssignmentUndos(
+  groupId: string,
+  cursor?: string,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.GET('/api/v1/groups/{group_id}/assignment-undos', {
+      params: { path: { group_id: groupId }, query: { cursor, limit: 25 } },
+      signal,
+      cache: 'no-store',
+    }),
+  )
+}
+export async function deleteGroupAssignment(
+  groupId: string,
+  id: string,
+  body: GroupAssignmentVersion,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/assignments/{assignment_id}/delete-with-undo', {
+      params: { path: { group_id: groupId, assignment_id: id } },
+      body,
+      signal,
+    }),
+  )
+}
+export async function restoreGroupAssignment(
+  groupId: string,
+  id: string,
+  body: GroupAssignmentVersion,
+  signal?: AbortSignal,
+) {
+  return unwrap(
+    await client.POST('/api/v1/groups/{group_id}/assignments/{assignment_id}/restore', {
+      params: { path: { group_id: groupId, assignment_id: id } },
+      body,
+      signal,
+    }),
+  )
 }
 
 export async function logout(): Promise<void> {

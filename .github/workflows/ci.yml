@@ -114,6 +114,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/prosepect
       APP_ENV: development
       ALLOW_INSECURE_DEV_AUTH: "true"
+      # Disposable end-to-end service only; hosted defaults remain disabled.
+      GROUPS_ENABLED: "true"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable

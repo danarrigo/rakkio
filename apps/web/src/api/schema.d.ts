@@ -548,6 +548,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/groups/{group_id}/assignment-undos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_assignment_undos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_assignments_list"];
+        put?: never;
+        post: operations["group_assignments_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/assignments/{assignment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_assignments_get"];
+        put: operations["group_assignments_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/assignments/{assignment_id}/delete-with-undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["group_assignments_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/assignments/{assignment_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["group_assignment_progress_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/assignments/{assignment_id}/progress-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_assignment_progress_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/assignments/{assignment_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["group_assignments_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/content-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_content_usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/groups/{group_id}/invitations": {
         parameters: {
             query?: never;
@@ -574,6 +702,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["groups_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_progress_preferences_get"];
+        put?: never;
+        post: operations["group_progress_preferences_update"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1281,6 +1425,17 @@ export interface components {
         ActivityList: {
             items: components["schemas"]["ActivityEntry"][];
         };
+        AssignmentProgress: {
+            /** Format: date-time */
+            completed_at?: string | null;
+            /** Format: int32 */
+            seen_assignment_version?: number | null;
+            /** Format: int32 */
+            version: number;
+        };
+        AssignmentProgressReport: {
+            items: components["schemas"]["SharedAssignmentProgress"][];
+        };
         Calendar: {
             color: string;
             /** Format: date-time */
@@ -1390,6 +1545,16 @@ export interface components {
             name: string;
             roster_notice_version: string;
             timezone: string;
+        };
+        CreateGroupAssignment: {
+            deadline_timezone?: string | null;
+            description?: string;
+            /** Format: date */
+            due_on?: string | null;
+            due_time?: string | null;
+            /** Format: uuid */
+            expected_user_id: string;
+            title: string;
         };
         CreateNoteRequest: {
             /** Format: uuid */
@@ -1670,8 +1835,64 @@ export interface components {
             /** @enum {string} */
             kind: "restore";
         };
+        GroupAssignment: {
+            changed_since_completion: boolean;
+            description: string;
+            /** Format: date-time */
+            due_at?: string | null;
+            /** Format: date */
+            due_on?: string | null;
+            due_time?: string | null;
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            id: string;
+            my_progress: components["schemas"]["AssignmentProgress"];
+            state: string;
+            timezone: string;
+            title: string;
+            /** Format: int32 */
+            version: number;
+        };
+        /** @enum {string} */
+        GroupAssignmentFilter: "open" | "closed";
+        GroupAssignmentPage: {
+            items: components["schemas"]["GroupAssignment"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        GroupAssignmentUndo: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /** Format: date-time */
+            undo_until: string;
+            /** Format: int32 */
+            version: number;
+        };
+        GroupAssignmentUndoPage: {
+            items: components["schemas"]["GroupAssignmentUndo"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        GroupAssignmentVersion: {
+            /** Format: uuid */
+            expected_user_id: string;
+            /** Format: int32 */
+            expected_version: number;
+        };
         GroupCapability: {
             enabled: boolean;
+        };
+        GroupContentUsage: {
+            /** Format: int64 */
+            max_bytes: number;
+            /** Format: int64 */
+            max_records: number;
+            /** Format: int64 */
+            used_bytes: number;
+            /** Format: int64 */
+            used_records: number;
         };
         GroupDetail: {
             group: components["schemas"]["GroupSummary"];
@@ -1749,6 +1970,16 @@ export interface components {
         };
         GroupMutationResult: {
             group?: components["schemas"]["GroupSummary"] | null;
+        };
+        GroupProgressPreferences: {
+            /** Format: uuid */
+            membership_id: string;
+            notice_version?: string | null;
+            share_progress: boolean;
+            /** Format: date-time */
+            shared_at?: string | null;
+            /** Format: int32 */
+            version: number;
         };
         GroupSummary: {
             approval_required: boolean;
@@ -1990,6 +2221,16 @@ export interface components {
             csrf_token: string;
             user: components["schemas"]["UserProfile"];
         };
+        SharedAssignmentProgress: {
+            /** Format: date-time */
+            completed_at?: string | null;
+            display_name: string;
+            handle: string;
+            /** Format: int32 */
+            seen_assignment_version?: number | null;
+            /** Format: uuid */
+            user_id: string;
+        };
         StartDailyReviewRequest: {
             manual?: boolean;
         };
@@ -2118,6 +2359,17 @@ export interface components {
             scheduled_start?: string | null;
             title: string;
         };
+        UpdateAssignmentProgress: {
+            completed: boolean;
+            /** Format: int32 */
+            expected_assignment_version: number;
+            /** Format: uuid */
+            expected_membership_id: string;
+            /** Format: int32 */
+            expected_progress_version: number;
+            /** Format: uuid */
+            expected_user_id: string;
+        };
         UpdateCalendarEventRequest: {
             all_day: boolean;
             attendees: string[];
@@ -2146,6 +2398,29 @@ export interface components {
         };
         UpdateDailyFocusRequest: {
             task_ids: string[];
+        };
+        UpdateGroupAssignment: {
+            deadline_timezone?: string | null;
+            description: string;
+            /** Format: date */
+            due_on?: string | null;
+            due_time?: string | null;
+            /** Format: uuid */
+            expected_user_id: string;
+            /** Format: int32 */
+            expected_version: number;
+            state: string;
+            title: string;
+        };
+        UpdateGroupProgressPreferences: {
+            /** Format: uuid */
+            expected_membership_id: string;
+            /** Format: uuid */
+            expected_user_id: string;
+            /** Format: int32 */
+            expected_version: number;
+            notice_version?: string | null;
+            share_progress: boolean;
         };
         UpdateNoteRequest: {
             /** Format: uuid */
@@ -3870,6 +4145,417 @@ export interface operations {
             };
         };
     };
+    group_assignment_undos: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignmentUndoPage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_list: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                state?: components["schemas"]["GroupAssignmentFilter"];
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignmentPage"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGroupAssignment"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignment"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignment"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGroupAssignment"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignment"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupAssignmentVersion"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignmentUndo"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignment_progress_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAssignmentProgress"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignment"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignment_progress_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentProgressReport"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_assignments_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                assignment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupAssignmentVersion"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAssignment"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_content_usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupContentUsage"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     groups_invite: {
         parameters: {
             query?: never;
@@ -3968,6 +4654,84 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_progress_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupProgressPreferences"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_progress_preferences_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGroupProgressPreferences"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupProgressPreferences"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

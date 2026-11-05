@@ -1,3 +1,5 @@
+use axum::body::Bytes;
+use futures_util::{Stream, TryStreamExt};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -9,14 +11,64 @@ use crate::{
 
 impl Store {
     pub async fn export_json(&self, user_id: Uuid) -> AppResult<Vec<u8>> {
+        self.export_json_stream(user_id)
+            .await?
+            .map_ok(|bytes| bytes.to_vec())
+            .try_concat()
+            .await
+    }
+
+    // Shared definitions can span many group budgets. Stream bounded pages rather
+    // than buffering all authorized groups into one potentially huge allocation.
+    pub async fn export_json_stream(
+        &self,
+        user_id: Uuid,
+    ) -> AppResult<impl Stream<Item = AppResult<Bytes>> + Send + 'static + use<>> {
         let bundle = self.export_bundle(user_id).await?;
-        serde_json::to_vec_pretty(&bundle).map_err(|error| {
-            tracing::error!(error = ?error, "failed to serialize account export");
-            AppError::InvalidRequest {
-                status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                message: "could not create account export".to_owned(),
-            }
-        })
+        let mut prefix = serde_json::to_vec_pretty(&bundle).map_err(|_| export_error())?;
+        prefix.pop(); // serde_json emits a complete object ending with '}'.
+        prefix.extend_from_slice(b",\"group_assignments\":[");
+        let state = JsonExportState {
+            store: self.clone(),
+            user: user_id,
+            prefix: Some(prefix),
+            cursor: None,
+            first: true,
+            finished: false,
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(120),
+        };
+        Ok(futures_util::stream::try_unfold(
+            state,
+            |mut state| async move {
+                if state.finished {
+                    return Ok(None);
+                }
+                if std::time::Instant::now() > state.deadline {
+                    return Err(export_error());
+                }
+                if let Some(prefix) = state.prefix.take() {
+                    return Ok(Some((Bytes::from(prefix), state)));
+                }
+                let rows = state
+                    .store
+                    .group_assignment_export_page(state.user, state.cursor)
+                    .await?;
+                if rows.is_empty() {
+                    state.finished = true;
+                    return Ok(Some((Bytes::from_static(b"]}"), state)));
+                }
+                state.cursor = rows.last().map(|row| row.id);
+                let mut bytes = Vec::new();
+                for row in rows {
+                    if !state.first {
+                        bytes.push(b',');
+                    }
+                    state.first = false;
+                    serde_json::to_writer(&mut bytes, &row.value).map_err(|_| export_error())?;
+                }
+                Ok(Some((Bytes::from(bytes), state)))
+            },
+        ))
     }
 
     pub async fn export_tasks_csv(&self, user_id: Uuid) -> AppResult<Vec<u8>> {
@@ -234,9 +286,12 @@ impl Store {
         let recurrence_templates = self.recurrence_templates(user_id).await?;
         let discord_connection = sqlx::query_scalar::<_, serde_json::Value>("SELECT jsonb_build_object('discord_user_id',discord_user_id,'username',username,'timezone',timezone,'consent_version',consent_version,'connected_at',connected_at) FROM discord_connections WHERE user_id=$1")
             .bind(user_id).fetch_optional(&self.pool).await?;
-        let group_membership_notices=sqlx::query_scalar::<_,serde_json::Value>("SELECT jsonb_build_object('membership_id',id,'group_id',group_id,'state',state,'joined_at',joined_at,'roster_notice_version',roster_notice_version,'share_progress',share_progress,'discord_enabled',discord_enabled) FROM group_memberships WHERE user_id=$1 ORDER BY group_id")
+        let group_membership_notices=sqlx::query_scalar::<_,serde_json::Value>("SELECT jsonb_build_object('membership_id',id,'group_id',group_id,'state',state,'joined_at',joined_at,'roster_notice_version',roster_notice_version,'share_progress',share_progress,'progress_notice_version',progress_notice_version,'progress_shared_at',progress_shared_at,'discord_enabled',discord_enabled) FROM group_memberships WHERE user_id=$1 ORDER BY group_id")
+            .bind(user_id).fetch_all(&self.pool).await?;
+        let group_assignment_progress=sqlx::query_scalar::<_,serde_json::Value>("SELECT to_jsonb(p)-'membership_state' FROM group_assignment_progress p JOIN groups g ON g.id=p.group_id WHERE p.user_id=$1 AND g.deleted_at IS NULL ORDER BY p.group_id,p.assignment_id")
             .bind(user_id).fetch_all(&self.pool).await?;
         Ok(AccountExport {
+            group_assignment_progress,
             group_membership_notices,
             groups: self.list_groups(user_id).await?,
             handle: self.own_handle(user_id).await?.handle,
@@ -269,8 +324,24 @@ impl Store {
     }
 }
 
+fn export_error() -> AppError {
+    AppError::InvalidRequest {
+        status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Could not finish the account export. Please download it again.".into(),
+    }
+}
+struct JsonExportState {
+    store: Store,
+    user: Uuid,
+    prefix: Option<Vec<u8>>,
+    cursor: Option<Uuid>,
+    first: bool,
+    finished: bool,
+    deadline: std::time::Instant,
+}
 #[derive(Serialize)]
 struct AccountExport {
+    group_assignment_progress: Vec<serde_json::Value>,
     group_membership_notices: Vec<serde_json::Value>,
     groups: Vec<crate::groups::GroupSummary>,
     handle: Option<String>,

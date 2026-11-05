@@ -23,11 +23,19 @@ pub async fn export_json(
     State(state): State<AppState>,
     CurrentUser(user_id): CurrentUser,
 ) -> AppResult<Response<Body>> {
-    download(
-        state.store.export_json(user_id).await?,
-        "application/json; charset=utf-8",
-        "rakkio-export.json",
-    )
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"rakkio-export.json\"",
+        )
+        .body(Body::from_stream(
+            state.store.export_json_stream(user_id).await?,
+        ))
+        .map_err(|_| AppError::InvalidRequest {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "could not create account export".into(),
+        })
 }
 
 #[utoipa::path(
