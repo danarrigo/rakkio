@@ -30,6 +30,7 @@ impl GroupAssignmentFilter {
     }
 }
 #[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct GroupAssignmentQuery {
     pub cursor: Option<Uuid>,
