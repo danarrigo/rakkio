@@ -2038,7 +2038,7 @@ export interface components {
             /** Format: uuid */
             group_id: string;
             group_name: string;
-            origin: string;
+            origin: components["schemas"]["GroupEventOrigin"];
             /** Format: date */
             original_date: string;
             /** Format: date-time */
@@ -2051,6 +2051,8 @@ export interface components {
             /** Format: uuid */
             next_cursor?: string | null;
         };
+        /** @enum {string} */
+        GroupEventOrigin: "group_event";
         GroupEventPage: {
             items: components["schemas"]["GroupEvent"][];
             /** Format: uuid */

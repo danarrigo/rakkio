@@ -8830,7 +8830,7 @@
             "type": "string"
           },
           "origin": {
-            "type": "string"
+            "$ref": "#/components/schemas/GroupEventOrigin"
           },
           "original_date": {
             "type": "string",
@@ -8868,6 +8868,12 @@
             "format": "uuid"
           }
         }
+      },
+      "GroupEventOrigin": {
+        "type": "string",
+        "enum": [
+          "group_event"
+        ]
       },
       "GroupEventPage": {
         "type": "object",
