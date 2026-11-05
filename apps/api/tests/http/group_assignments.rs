@@ -715,7 +715,7 @@ async fn assignment_pages_separate_open_work_from_closed_history_with_stable_cur
         )
         .await?
         .0,
-        StatusCode::UNPROCESSABLE_ENTITY
+        StatusCode::BAD_REQUEST
     );
     Ok(())
 }
