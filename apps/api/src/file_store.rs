@@ -37,6 +37,17 @@ impl Store {
             .await?;
 
         let mut transaction = self.pool.begin().await?;
+        let deleting: bool =
+            sqlx::query_scalar("SELECT group_admission_blocked FROM users WHERE id=$1 FOR UPDATE")
+                .bind(user_id)
+                .fetch_optional(&mut *transaction)
+                .await?
+                .ok_or(AppError::Unauthorized)?;
+        if deleting {
+            return Err(AppError::Conflict(
+                "Account erasure is pending. New uploads are blocked.".into(),
+            ));
+        }
         sqlx::query("SELECT pg_advisory_xact_lock($1)")
             .bind(741_733_074_i64)
             .execute(&mut *transaction)
@@ -86,8 +97,29 @@ impl Store {
         .bind(byte_size)
         .fetch_one(&mut *transaction)
         .await?;
+        sqlx::query("INSERT INTO pending_file_uploads(file_id) VALUES($1)")
+            .bind(file.id)
+            .execute(&mut *transaction)
+            .await?;
         transaction.commit().await?;
         Ok(file)
+    }
+
+    /// Publish only after the object PUT succeeded, while serializing with erasure.
+    pub async fn finish_file_upload(&self, user_id: Uuid, file_id: Uuid) -> AppResult<bool> {
+        let mut tx = self.pool.begin().await?;
+        let deleting: Option<bool> =
+            sqlx::query_scalar("SELECT group_admission_blocked FROM users WHERE id=$1 FOR UPDATE")
+                .bind(user_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if deleting != Some(false) {
+            return Ok(false);
+        }
+        let published=sqlx::query("DELETE FROM pending_file_uploads p USING files f WHERE p.file_id=f.id AND f.user_id=$1 AND f.id=$2 AND p.expires_at>clock_timestamp()")
+            .bind(user_id).bind(file_id).execute(&mut *tx).await?.rows_affected()==1;
+        tx.commit().await?;
+        Ok(published)
     }
 
     pub async fn list_files(&self, user_id: Uuid, query: FileListQuery) -> AppResult<FileList> {
@@ -103,6 +135,7 @@ impl Store {
                    content_type, byte_size, created_at
             FROM files
             WHERE user_id = $1
+              AND NOT EXISTS(SELECT 1 FROM pending_file_uploads p WHERE p.file_id=files.id)
               AND ($2::UUID IS NULL OR project_id = $2)
               AND ($3::UUID IS NULL OR task_id = $3)
               AND ($4::UUID IS NULL OR note_id = $4)
@@ -130,6 +163,7 @@ impl Store {
             SELECT id, project_id, task_id, note_id, event_id, filename,
                    content_type, byte_size, created_at, object_key
             FROM files WHERE user_id = $1 AND id = $2
+              AND NOT EXISTS(SELECT 1 FROM pending_file_uploads p WHERE p.file_id=files.id)
             "#,
         )
         .bind(user_id)

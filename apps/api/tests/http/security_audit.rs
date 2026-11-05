@@ -6,7 +6,10 @@ use axum::{
 };
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::Notify;
 use uuid::Uuid;
@@ -16,18 +19,38 @@ struct Bucket {
     objects: Arc<Mutex<HashMap<String, bytes::Bytes>>>,
     started: Arc<Notify>,
     release: Arc<Notify>,
+    committed: Arc<Notify>,
+    fail_delete: Arc<AtomicBool>,
 }
 async fn object(
     State(bucket): State<Bucket>,
     Path(key): Path<String>,
     request: axum::extract::Request,
 ) -> axum::response::Response {
+    if matches!(request.method().as_str(), "POST" | "DELETE")
+        && bucket.fail_delete.load(Ordering::SeqCst)
+    {
+        let _ = to_bytes(request.into_body(), 65536).await.unwrap();
+        return (
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "application/xml")],
+            "<Error><Code>AccessDenied</Code><Message>fixture</Message></Error>",
+        )
+            .into_response();
+    }
     match request.method().as_str() {
         "PUT" => {
             let bytes = to_bytes(request.into_body(), 65536).await.unwrap();
             bucket.started.notify_one();
-            bucket.release.notified().await;
-            bucket.objects.lock().unwrap().insert(key, bytes);
+            // Model a provider completing an accepted write even if the API
+            // request/process disappears before its response is acknowledged.
+            tokio::spawn(async move {
+                bucket.release.notified().await;
+                bucket.objects.lock().unwrap().insert(key, bytes);
+                bucket.committed.notify_one();
+            })
+            .await
+            .unwrap();
             ([(header::ETAG, "\"fixture-etag\"")], "").into_response()
         }
         "DELETE" => {
@@ -192,6 +215,136 @@ async fn forwarded_chains_cannot_rotate_authentication_rate_limit_identity(
             }
         );
     }
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn cancelled_upload_stays_charged_until_cleanup_is_confirmed(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, bucket, server) = upload_fixture(&pool).await?;
+    let pending = upload(router.clone());
+    tokio::time::timeout(std::time::Duration::from_secs(5), bucket.started.notified()).await?;
+    pending.abort();
+    let _ = pending.await;
+    bucket.release.notify_one();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        bucket.committed.notified(),
+    )
+    .await?;
+    bucket.fail_delete.store(true, Ordering::SeqCst);
+    sqlx::query("UPDATE pending_file_uploads SET expires_at=clock_timestamp()-INTERVAL '1 second',cleanup_after=clock_timestamp()-INTERVAL '1 second'").execute(&pool).await?;
+    let erase = || {
+        Request::builder()
+            .method("DELETE")
+            .uri("/api/v1/account")
+            .header(DEVELOPMENT_USER_HEADER, DEVELOPMENT_USER_ID.to_string())
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"confirmation":"DELETE"}"#))
+            .unwrap()
+    };
+    let response = router.clone().oneshot(erase()).await?;
+    let status = response.status();
+    let _ = to_bytes(response.into_body(), 65536).await?;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        Store::from_pool(pool.clone())
+            .file_usage_bytes(DEVELOPMENT_USER_ID)
+            .await?,
+        8
+    );
+    assert_eq!(bucket.objects.lock().unwrap().len(), 1);
+    let blocked = upload(router.clone()).await??;
+    assert_eq!(blocked.status(), StatusCode::CONFLICT);
+    let _ = to_bytes(blocked.into_body(), 65536).await?;
+    bucket.fail_delete.store(false, Ordering::SeqCst);
+    sqlx::query(
+        "UPDATE pending_file_uploads SET cleanup_after=clock_timestamp()-INTERVAL '1 second'",
+    )
+    .execute(&pool)
+    .await?;
+    let response = router.oneshot(erase()).await?;
+    let status = response.status();
+    let _ = to_bytes(response.into_body(), 65536).await?;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(bucket.objects.lock().unwrap().is_empty());
+    server.abort();
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn render_identity_ignores_xff_and_uses_only_overwritten_cf_ip(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let mut config = test_config();
+    config.trust_proxy_headers = true;
+    config.trusted_proxy_ip_header = prosepect_api::rate_limit::ProxyIpHeader::CfConnectingIp;
+    let router = app::build(&config, Store::from_pool(pool))?;
+    for n in 0..11 {
+        let response=router.clone().oneshot(Request::builder().uri("/api/v1/auth/google/start?terms_version=outdated&privacy_version=outdated&age_confirmed=true").header("x-forwarded-for",format!("198.51.100.{n}")).header("cf-connecting-ip","203.0.113.7").body(Body::empty())?).await?;
+        let status = response.status();
+        let _ = to_bytes(response.into_body(), 65536).await?;
+        assert_eq!(
+            status,
+            if n < 10 {
+                StatusCode::UNPROCESSABLE_ENTITY
+            } else {
+                StatusCode::TOO_MANY_REQUESTS
+            }
+        );
+    }
+    for n in 10..21 {
+        let response=router.clone().oneshot(Request::builder().uri("/api/v1/auth/google/start?terms_version=outdated&privacy_version=outdated&age_confirmed=true").header("x-forwarded-for","198.51.100.1").header("cf-connecting-ip",format!("203.0.113.{n}")).body(Body::empty())?).await?;
+        let status = response.status();
+        let _ = to_bytes(response.into_body(), 65536).await?;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn browser_bound_pending_oauth_attempts_are_capped(pool: PgPool) -> anyhow::Result<()> {
+    let mut config = test_config();
+    config.google_oauth = Some(GoogleOAuthConfig {
+        client_id: "test-client".into(),
+        client_secret: "test-secret".into(),
+        redirect_uri: "http://localhost/callback".into(),
+        token_encryption_key: "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".into(),
+    });
+    let router = app::build(&config, Store::from_pool(pool.clone()))?;
+    let mut cookie = None;
+    for n in 0..6 {
+        let mut request=Request::builder().uri("/api/v1/auth/google/start?terms_version=2026-10-04&privacy_version=2026-11-04-groups&age_confirmed=true");
+        if let Some(cookie) = &cookie {
+            request = request.header(header::COOKIE, cookie);
+        }
+        let response = router.clone().oneshot(request.body(Body::empty())?).await?;
+        if cookie.is_none() {
+            cookie = Some(
+                response.headers()[header::SET_COOKIE]
+                    .to_str()?
+                    .split(';')
+                    .next()
+                    .unwrap()
+                    .to_owned(),
+            );
+        }
+        let status = response.status();
+        let _ = to_bytes(response.into_body(), 65536).await?;
+        assert_eq!(
+            status,
+            if n < 5 {
+                StatusCode::TEMPORARY_REDIRECT
+            } else {
+                StatusCode::TOO_MANY_REQUESTS
+            }
+        );
+    }
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM oauth_login_attempts")
+        .fetch_one(&pool)
+        .await?;
+    assert_eq!(count, 5);
     Ok(())
 }
 

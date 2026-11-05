@@ -37,6 +37,8 @@ services:
         value: "100"
       - key: TRUST_PROXY_HEADERS
         value: "true"
+      - key: TRUSTED_PROXY_IP_HEADER
+        value: cf-connecting-ip
       - key: GOOGLE_REDIRECT_URI
         value: https://api.rakkio.com/api/v1/auth/google/callback
       - key: GOOGLE_CALENDAR_WEBHOOK_URL

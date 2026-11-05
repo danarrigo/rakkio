@@ -13,7 +13,7 @@ pub struct SyncDispatcher {
 }
 
 impl SyncDispatcher {
-    pub fn start(service: SyncService) -> Self {
+    pub fn start(service: SyncService, storage: crate::file_storage::FileStorage) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
         tokio::spawn(async move {
             if let Err(error) = service.enqueue_periodic_work().await {
@@ -29,6 +29,16 @@ impl SyncDispatcher {
                         }
                     }
                     _ = tokio::time::sleep(RETRY_POLL_INTERVAL) => {}
+                }
+                if let Err(error) = crate::file_lifecycle::cleanup_pending_uploads(
+                    &service.store,
+                    &storage,
+                    None,
+                    1,
+                )
+                .await
+                {
+                    tracing::error!(error=?error,"pending attachment cleanup failed");
                 }
                 for _ in 0..MAX_JOBS_PER_DRAIN {
                     // Finish an in-flight job, but do not start another after shutdown.
@@ -53,7 +63,10 @@ impl SyncDispatcher {
         dispatcher
     }
 
-    pub fn start_maintenance(store: crate::store::Store) -> Self {
+    pub fn start_maintenance(
+        store: crate::store::Store,
+        storage: crate::file_storage::FileStorage,
+    ) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
         tokio::spawn(async move {
             loop {
@@ -69,6 +82,11 @@ impl SyncDispatcher {
                 }
                 if let Err(error) = store.cleanup_discord().await {
                     tracing::error!(error = ?error, "Discord metadata cleanup failed");
+                }
+                if let Err(error) =
+                    crate::file_lifecycle::cleanup_pending_uploads(&store, &storage, None, 1).await
+                {
+                    tracing::error!(error=?error,"pending attachment cleanup failed");
                 }
             }
         });

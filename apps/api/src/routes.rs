@@ -44,10 +44,14 @@ pub async fn health() -> Json<HealthResponse> {
 #[utoipa::path(
     get,
     path = "/metrics",
-    responses((status = 200, content_type = "text/plain", body = String)),
+    responses((status = 200, content_type = "text/plain", body = String), (status = 401, body = ErrorResponse), (status = 403, body = ErrorResponse)),
+    security(("session_cookie" = []), ("development_user" = [])),
     tag = "system"
 )]
-pub async fn metrics(State(state): State<AppState>) -> ([(&'static str, &'static str); 1], String) {
+pub async fn metrics(
+    State(state): State<AppState>,
+    _admin: crate::operations::OperationsAdmin,
+) -> ([(&'static str, &'static str); 1], String) {
     (
         [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
         state.metrics.render(),

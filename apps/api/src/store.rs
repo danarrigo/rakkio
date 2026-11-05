@@ -231,16 +231,28 @@ impl Store {
             _ => return Err(AppError::Validation("invalid OAuth purpose".to_owned())),
         };
         let mut transaction = self.pool.begin().await?;
-        sqlx::query("DELETE FROM oauth_login_attempts WHERE expires_at <= NOW()")
+        sqlx::query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('google-oauth-pending-capacity',0))",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query("DELETE FROM oauth_login_attempts WHERE expires_at <= clock_timestamp()")
             .execute(&mut *transaction)
             .await?;
+        let (total,browser):(i64,i64)=sqlx::query_as("SELECT COUNT(*),COUNT(*) FILTER(WHERE browser_binding_hash=$1) FROM oauth_login_attempts").bind(token_hash(browser_secret)).fetch_one(&mut *transaction).await?;
+        if total >= 5000 || browser >= 5 {
+            return Err(AppError::InvalidRequest {
+                status: axum::http::StatusCode::TOO_MANY_REQUESTS,
+                message: "too many pending sign-in requests; try again shortly".into(),
+            });
+        }
         sqlx::query(
             r#"
             INSERT INTO oauth_login_attempts (
                 state_hash, nonce, pkce_verifier, expires_at, user_id, purpose,
                 terms_version, privacy_version, age_confirmed, browser_binding_hash
             )
-            VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes', $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, clock_timestamp() + INTERVAL '10 minutes', $4, $5, $6, $7, $8, $9)
             "#,
         )
         .bind(token_hash(&login.state))
@@ -266,7 +278,7 @@ impl Store {
         sqlx::query_as::<_, OAuthLoginAttempt>(
             r#"
             DELETE FROM oauth_login_attempts
-            WHERE state_hash = $1 AND browser_binding_hash = $2 AND expires_at > NOW()
+            WHERE state_hash = $1 AND browser_binding_hash = $2 AND expires_at > clock_timestamp()
             RETURNING nonce, pkce_verifier, user_id, purpose,
                       terms_version, privacy_version, age_confirmed
             "#,

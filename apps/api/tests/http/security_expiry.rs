@@ -98,7 +98,51 @@ async fn expired_ownership_offer_cannot_transfer_after_actor_lock_wait(
     .await?;
     blocker.commit().await?;
     let (status, value) = pending.await??;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{value}");
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn expired_invitation_cannot_be_approved_after_actor_lock_wait(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (router, _, [owner, alice, _, _]) = fixture(&pool).await?;
+    let group = create(&router, owner).await?;
+    let invitation = invite(&router, owner, &group, "link", None, 1).await?;
+    assert_eq!(
+        join(&router, alice, &invitation).await?.1["status"],
+        "pending"
+    );
+    let view = detail(&router, owner, &group).await?;
+    let request = view["join_requests"][0].clone();
+    let (blocker, pid) = lock_actor(&pool, owner).await?;
+    let r = router.clone();
+    let g = group.clone();
+    let pending = tokio::spawn(async move {
+        action(&r,owner,&g,json!({"kind":"review_join","request_id":request["id"],"expected_request_version":request["version"],"approve":true})).await
+    });
+    let began = waiting_start(&pool, pid).await?;
+    sqlx::query("UPDATE group_invitations SET expires_at=$2+INTERVAL '1 microsecond' WHERE id=$1")
+        .bind(
+            invitation["invitation"]["id"]
+                .as_str()
+                .unwrap()
+                .parse::<Uuid>()?,
+        )
+        .bind(began)
+        .execute(&pool)
+        .await?;
+    blocker.commit().await?;
+    let (status, value) = pending.await??;
     assert_eq!(status, StatusCode::CONFLICT, "{value}");
+    let members: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM group_memberships WHERE group_id=$1 AND user_id=$2",
+    )
+    .bind(group["id"].as_str().unwrap().parse::<Uuid>()?)
+    .bind(alice)
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(members, 0);
     Ok(())
 }
 

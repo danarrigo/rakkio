@@ -900,6 +900,7 @@ fn test_config() -> Config {
         invite_only: false,
         groups_enabled: false,
         trust_proxy_headers: false,
+        trusted_proxy_ip_header: Default::default(),
         google_oauth: None,
         discord: None,
         object_storage: ObjectStorageConfig::Local {

@@ -191,6 +191,12 @@ impl Store {
             .bind(user_id).fetch_all(&mut *tx).await?;
         sqlx::query("UPDATE group_invitations SET revoked_at=NOW(),version=version+1 WHERE issuer_id=$1 AND revoked_at IS NULL")
             .bind(user_id).execute(&mut *tx).await?;
+        let uploading:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pending_file_uploads p JOIN files f ON f.id=p.file_id WHERE f.user_id=$1)").bind(user_id).fetch_one(&mut *tx).await?;
+        if uploading {
+            return Err(AppError::Conflict(
+                "An upload is still pending. Retry account erasure after cleanup.".into(),
+            ));
+        }
         let result = sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(user_id)
             .execute(&mut *tx)
@@ -229,7 +235,15 @@ impl Store {
             .bind(user_id)
             .execute(&mut *tx)
             .await?;
+        let uploading:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pending_file_uploads p JOIN files f ON f.id=p.file_id WHERE f.user_id=$1)").bind(user_id).fetch_one(&mut *tx).await?;
+        // Persist the admission barrier even when an active/uncertain upload
+        // prevents erasure, so retry cannot race another newly reserved write.
         tx.commit().await?;
+        if uploading {
+            return Err(AppError::Conflict(
+                "An upload is still pending. Retry account erasure after cleanup.".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -276,7 +290,7 @@ impl Store {
             r#"
             SELECT id, project_id, task_id, note_id, event_id, filename,
                    content_type, byte_size, created_at
-            FROM files WHERE user_id = $1 ORDER BY created_at, id
+            FROM files WHERE user_id = $1 AND NOT EXISTS(SELECT 1 FROM pending_file_uploads p WHERE p.file_id=files.id) ORDER BY created_at, id
             "#,
         )
         .bind(user_id)
