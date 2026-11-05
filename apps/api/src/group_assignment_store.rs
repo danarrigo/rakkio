@@ -144,17 +144,12 @@ async fn preferences(
         .bind(membership).fetch_one(c).await?)
 }
 
-#[derive(FromRow)]
-pub(crate) struct AssignmentExportRow {
-    pub(crate) id: Uuid,
-    pub(crate) value: serde_json::Value,
-}
 impl Store {
     pub(crate) async fn group_assignment_export_page(
         &self,
         user: Uuid,
         cursor: Option<Uuid>,
-    ) -> AppResult<Vec<AssignmentExportRow>> {
+    ) -> AppResult<Vec<crate::export_store::GroupExportRow>> {
         // Recheck current membership on every page, including after a long/slow download.
         Ok(sqlx::query_as("SELECT a.id,jsonb_build_object('group_name',g.name,'assignment',to_jsonb(a)-ARRAY['deleted_at','undo_until','deleted_membership_epoch'],'my_progress',jsonb_build_object('completed_at',p.completed_at,'version',COALESCE(p.version,0),'seen_assignment_version',p.seen_assignment_version)) AS value FROM group_assignments a JOIN groups g ON g.id=a.group_id JOIN group_memberships m ON m.group_id=g.id AND m.user_id=$1 AND m.state='active' LEFT JOIN group_assignment_progress p ON p.assignment_id=a.id AND p.membership_id=m.id WHERE g.deleted_at IS NULL AND a.deleted_at IS NULL AND ($2::uuid IS NULL OR a.id>$2) ORDER BY a.id LIMIT 100")
             .bind(user).bind(cursor).fetch_all(&self.pool).await?)
@@ -365,7 +360,7 @@ impl Store {
         a.leader(user)?;
         let old = assignment(&mut tx, a.my_membership_id, group, id).await?;
         version(old.version, expected)?;
-        let result=sqlx::query_as("UPDATE group_assignments SET deleted_at=NOW(),undo_until=NOW()+INTERVAL '60 seconds',deleted_membership_epoch=$3,version=version+1 WHERE group_id=$1 AND id=$2 RETURNING id,title,version,undo_until")
+        let result=sqlx::query_as("UPDATE group_assignments SET deleted_at=clock_timestamp(),undo_until=clock_timestamp()+INTERVAL '60 seconds',deleted_membership_epoch=$3,version=version+1 WHERE group_id=$1 AND id=$2 RETURNING id,title,version,undo_until")
             .bind(group).bind(id).bind(a.membership_epoch).fetch_one(&mut *tx).await?;
         tx.commit().await?;
         Ok(result)
@@ -381,7 +376,7 @@ impl Store {
         lock_users(&mut tx, user, vec![]).await?;
         let a = write_access(&mut tx, user, group).await?;
         a.leader(user)?;
-        let restored=sqlx::query("UPDATE group_assignments SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE group_id=$1 AND id=$2 AND version=$3 AND undo_until>NOW() AND deleted_membership_epoch=$4")
+        let restored=sqlx::query("UPDATE group_assignments SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE group_id=$1 AND id=$2 AND version=$3 AND undo_until>clock_timestamp() AND deleted_membership_epoch=$4")
             .bind(group).bind(id).bind(expected).bind(a.membership_epoch).execute(&mut *tx).await?;
         if restored.rows_affected() != 1 {
             return Err(AppError::Conflict(
@@ -406,7 +401,7 @@ impl Store {
         let a = read_access(&mut tx, user, group).await?;
         a.leader(user)?;
         let limit = page.normalized_limit();
-        let mut items:Vec<GroupAssignmentUndo>=sqlx::query_as("SELECT id,title,version,undo_until FROM group_assignments WHERE group_id=$1 AND undo_until>NOW() AND ($2::uuid IS NULL OR id>$2) ORDER BY id LIMIT $3")
+        let mut items:Vec<GroupAssignmentUndo>=sqlx::query_as("SELECT id,title,version,undo_until FROM group_assignments WHERE group_id=$1 AND undo_until>clock_timestamp() AND ($2::uuid IS NULL OR id>$2) ORDER BY id LIMIT $3")
             .bind(group).bind(page.cursor).bind(limit+1).fetch_all(&mut *tx).await?;
         let more = items.len() as i64 > limit;
         if more {

@@ -3057,6 +3057,616 @@
         ]
       }
     },
+    "/api/v1/groups/{group_id}/event-occurrences": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_event_occurrences",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Exclusive end of the viewer's civil-date window (at most 42 days).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEventOccurrencePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/groups/{group_id}/event-undos": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_event_undos",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEventUndoPage"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/groups/{group_id}/events": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_events_list",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEventPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_events_create",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEvent"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/groups/{group_id}/events/{event_id}": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_events_get",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_events_update",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEvent"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/groups/{group_id}/events/{event_id}/delete-with-undo": {
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_events_delete",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupEventVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEventUndo"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
+    "/api/v1/groups/{group_id}/events/{event_id}/restore": {
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "operationId": "group_events_restore",
+        "parameters": [
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupEventVersion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupEvent"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          },
+          {
+            "development_user": []
+          }
+        ]
+      }
+    },
     "/api/v1/groups/{group_id}/invitations": {
       "post": {
         "tags": [
@@ -6820,6 +7430,23 @@
         },
         "additionalProperties": false
       },
+      "CreateGroupEvent": {
+        "type": "object",
+        "required": [
+          "expected_user_id",
+          "event"
+        ],
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/GroupEventFields"
+          },
+          "expected_user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateNoteRequest": {
         "type": "object",
         "required": [
@@ -8087,6 +8714,262 @@
             }
           }
         }
+      },
+      "GroupEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "group_id",
+          "event",
+          "version"
+        ],
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/GroupEventFields"
+          },
+          "group_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "GroupEventFields": {
+        "type": "object",
+        "required": [
+          "title",
+          "starts_local",
+          "ends_local",
+          "all_day",
+          "timezone"
+        ],
+        "properties": {
+          "all_day": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "ends_local": {
+            "type": "string",
+            "example": "2027-03-07T10:00:00"
+          },
+          "location": {
+            "type": "string"
+          },
+          "recurrence": {
+            "$ref": "#/components/schemas/EventRecurrence"
+          },
+          "recurrence_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "starts_local": {
+            "type": "string",
+            "example": "2027-03-07T09:00:00"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GroupEventOccurrence": {
+        "type": "object",
+        "required": [
+          "origin",
+          "event_id",
+          "group_id",
+          "group_name",
+          "can_edit",
+          "original_date",
+          "title",
+          "starts_at",
+          "ends_at",
+          "all_day",
+          "timezone",
+          "event_version"
+        ],
+        "properties": {
+          "all_day": {
+            "type": "boolean"
+          },
+          "can_edit": {
+            "type": "boolean"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "group_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "group_name": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/GroupEventOrigin"
+          },
+          "original_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "GroupEventOccurrencePage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupEventOccurrence"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "GroupEventOrigin": {
+        "type": "string",
+        "enum": [
+          "group_event"
+        ]
+      },
+      "GroupEventPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupEvent"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "GroupEventScope": {
+        "type": "string",
+        "enum": [
+          "series"
+        ]
+      },
+      "GroupEventUndo": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "version",
+          "undo_until"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "undo_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "GroupEventUndoPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupEventUndo"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "GroupEventVersion": {
+        "type": "object",
+        "required": [
+          "expected_user_id",
+          "expected_version",
+          "scope"
+        ],
+        "properties": {
+          "expected_user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/GroupEventScope"
+          }
+        },
+        "additionalProperties": false
       },
       "GroupInbox": {
         "type": "object",
@@ -9832,6 +10715,32 @@
           },
           "title": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateGroupEvent": {
+        "type": "object",
+        "required": [
+          "expected_user_id",
+          "expected_version",
+          "scope",
+          "event"
+        ],
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/GroupEventFields"
+          },
+          "expected_user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/GroupEventScope"
           }
         },
         "additionalProperties": false

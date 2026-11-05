@@ -233,6 +233,7 @@ impl Store {
         sqlx::query("DELETE FROM groups WHERE id IN (SELECT id FROM groups WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 25 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_invitations WHERE id IN (SELECT id FROM group_invitations WHERE expires_at<=NOW() OR revoked_at<NOW()-INTERVAL '15 minutes' ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_assignments WHERE id IN (SELECT id FROM group_assignments WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
+        sqlx::query("DELETE FROM group_events WHERE id IN (SELECT id FROM group_events WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_ownership_offers WHERE expires_at<=NOW()")
             .execute(&self.pool)
             .await?;
@@ -549,11 +550,11 @@ impl Store {
                 if confirmation != "DELETE GROUP" {
                     return Err(AppError::Validation("Confirm with DELETE GROUP.".into()));
                 }
-                sqlx::query("UPDATE groups SET deleted_at=NOW(),undo_until=NOW()+INTERVAL '60 seconds',deleted_membership_epoch=membership_epoch,version=version+1 WHERE id=$1").bind(id).execute(&mut *tx).await?;
+                sqlx::query("UPDATE groups SET deleted_at=clock_timestamp(),undo_until=clock_timestamp()+INTERVAL '60 seconds',deleted_membership_epoch=membership_epoch,version=version+1 WHERE id=$1").bind(id).execute(&mut *tx).await?;
             }
             GroupAction::Restore => {
                 a.owner(user)?;
-                let changed=sqlx::query("UPDATE groups SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE id=$1 AND undo_until>NOW() AND deleted_membership_epoch=membership_epoch").bind(id).execute(&mut *tx).await?;
+                let changed=sqlx::query("UPDATE groups SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE id=$1 AND undo_until>clock_timestamp() AND deleted_membership_epoch=membership_epoch").bind(id).execute(&mut *tx).await?;
                 if changed.rows_affected() != 1 {
                     return Err(AppError::Conflict("Undo expired or group membership changed. The group cannot be restored safely.".into()));
                 }

@@ -676,6 +676,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/groups/{group_id}/event-occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_event_occurrences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/event-undos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_event_undos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_events_list"];
+        put?: never;
+        post: operations["group_events_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["group_events_get"];
+        put: operations["group_events_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/events/{event_id}/delete-with-undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["group_events_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{group_id}/events/{event_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["group_events_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/groups/{group_id}/invitations": {
         parameters: {
             query?: never;
@@ -1556,6 +1652,11 @@ export interface components {
             expected_user_id: string;
             title: string;
         };
+        CreateGroupEvent: {
+            event: components["schemas"]["GroupEventFields"];
+            /** Format: uuid */
+            expected_user_id: string;
+        };
         CreateNoteRequest: {
             /** Format: uuid */
             event_id?: string | null;
@@ -1901,6 +2002,84 @@ export interface components {
             members: components["schemas"]["GroupMember"][];
             ownership_offer?: components["schemas"]["OwnershipOffer"] | null;
             removed_members: components["schemas"]["GroupMember"][];
+        };
+        GroupEvent: {
+            event: components["schemas"]["GroupEventFields"];
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            version: number;
+        };
+        GroupEventFields: {
+            all_day: boolean;
+            description?: string;
+            /** @example 2027-03-07T10:00:00 */
+            ends_local: string;
+            location?: string;
+            recurrence?: components["schemas"]["EventRecurrence"];
+            /** Format: date */
+            recurrence_until?: string | null;
+            /** @example 2027-03-07T09:00:00 */
+            starts_local: string;
+            timezone: string;
+            title: string;
+        };
+        GroupEventOccurrence: {
+            all_day: boolean;
+            can_edit: boolean;
+            /** Format: date-time */
+            ends_at: string;
+            /** Format: uuid */
+            event_id: string;
+            /** Format: int32 */
+            event_version: number;
+            /** Format: uuid */
+            group_id: string;
+            group_name: string;
+            origin: components["schemas"]["GroupEventOrigin"];
+            /** Format: date */
+            original_date: string;
+            /** Format: date-time */
+            starts_at: string;
+            timezone: string;
+            title: string;
+        };
+        GroupEventOccurrencePage: {
+            items: components["schemas"]["GroupEventOccurrence"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        /** @enum {string} */
+        GroupEventOrigin: "group_event";
+        GroupEventPage: {
+            items: components["schemas"]["GroupEvent"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        /** @enum {string} */
+        GroupEventScope: "series";
+        GroupEventUndo: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /** Format: date-time */
+            undo_until: string;
+            /** Format: int32 */
+            version: number;
+        };
+        GroupEventUndoPage: {
+            items: components["schemas"]["GroupEventUndo"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        GroupEventVersion: {
+            /** Format: uuid */
+            expected_user_id: string;
+            /** Format: int32 */
+            expected_version: number;
+            scope: components["schemas"]["GroupEventScope"];
         };
         GroupInbox: {
             invitations: components["schemas"]["GroupInvitation"][];
@@ -2411,6 +2590,14 @@ export interface components {
             expected_version: number;
             state: string;
             title: string;
+        };
+        UpdateGroupEvent: {
+            event: components["schemas"]["GroupEventFields"];
+            /** Format: uuid */
+            expected_user_id: string;
+            /** Format: int32 */
+            expected_version: number;
+            scope: components["schemas"]["GroupEventScope"];
         };
         UpdateGroupProgressPreferences: {
             /** Format: uuid */
@@ -4547,6 +4734,343 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_event_occurrences: {
+        parameters: {
+            query: {
+                from: string;
+                /** @description Exclusive end of the viewer's civil-date window (at most 42 days). */
+                until: string;
+                timezone: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEventOccurrencePage"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_event_undos: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEventUndoPage"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_events_list: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEventPage"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_events_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGroupEvent"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEvent"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEvent"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_events_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGroupEvent"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEvent"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_events_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupEventVersion"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEventUndo"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    group_events_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupEventVersion"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupEvent"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
