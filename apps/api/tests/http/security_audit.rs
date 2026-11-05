@@ -34,6 +34,23 @@ async fn object(
             bucket.objects.lock().unwrap().remove(&key);
             StatusCode::NO_CONTENT.into_response()
         }
+        "POST" => {
+            let bytes = to_bytes(request.into_body(), 65536).await.unwrap();
+            let body = std::str::from_utf8(&bytes).unwrap();
+            let mut result =
+                String::from("<DeleteResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+            for part in body.split("<Key>").skip(1) {
+                let target = part.split("</Key>").next().unwrap();
+                bucket
+                    .objects
+                    .lock()
+                    .unwrap()
+                    .retain(|key, _| !key.ends_with(&format!("/{target}")));
+                result.push_str(&format!("<Deleted><Key>{target}</Key></Deleted>"));
+            }
+            result.push_str("</DeleteResult>");
+            ([(header::CONTENT_TYPE, "application/xml")], result).into_response()
+        }
         _ => StatusCode::METHOD_NOT_ALLOWED.into_response(),
     }
 }
