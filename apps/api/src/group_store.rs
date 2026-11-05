@@ -233,6 +233,7 @@ impl Store {
         sqlx::query("DELETE FROM groups WHERE id IN (SELECT id FROM groups WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 25 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_invitations WHERE id IN (SELECT id FROM group_invitations WHERE expires_at<=NOW() OR revoked_at<NOW()-INTERVAL '15 minutes' ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_assignments WHERE id IN (SELECT id FROM group_assignments WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
+        sqlx::query("DELETE FROM group_events WHERE id IN (SELECT id FROM group_events WHERE undo_until<=NOW() ORDER BY undo_until LIMIT 100 FOR UPDATE SKIP LOCKED)").execute(&self.pool).await?;
         sqlx::query("DELETE FROM group_ownership_offers WHERE expires_at<=NOW()")
             .execute(&self.pool)
             .await?;

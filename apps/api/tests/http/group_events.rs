@@ -6,7 +6,7 @@ fn path(g: &Value) -> String {
     format!("/api/v1/groups/{}/events", g["id"].as_str().unwrap())
 }
 fn event_body() -> Value {
-    json!({"title":"Algorithms lecture","description":"Shared class event","location":"Room 12","starts_local":"2027-03-07T09:00:00","ends_local":"2027-03-07T10:00:00","all_day":false,"timezone":"America/New_York","recurrence":"weekly","recurrence_until":"2027-03-31"})
+    json!({"event":{"title":"Algorithms lecture","description":"Shared class event","location":"Room 12","starts_local":"2027-03-07T09:00:00","ends_local":"2027-03-07T10:00:00","all_day":false,"timezone":"America/New_York","recurrence":"weekly","recurrence_until":"2027-03-31"}})
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -45,7 +45,7 @@ async fn shared_event_series_is_read_only_for_members_and_preserves_wall_time_th
     let mut update = event_body();
     update["expected_version"] = e["version"].clone();
     update["scope"] = json!("series");
-    update["title"] = json!("Updated lecture");
+    update["event"]["title"] = json!("Updated lecture");
     assert_eq!(
         call(&r, alice, "PUT", &endpoint, update.clone()).await?.0,
         StatusCode::FORBIDDEN

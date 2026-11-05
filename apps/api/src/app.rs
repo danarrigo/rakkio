@@ -85,6 +85,14 @@ pub struct AppState {
         description = "Personal productivity API for rakkio"
     ),
     paths(
+        crate::group_events::list,
+        crate::group_events::get,
+        crate::group_events::create,
+        crate::group_events::update,
+        crate::group_events::occurrences,
+        crate::group_events::delete,
+        crate::group_events::restore,
+        crate::group_events::undos,
         crate::group_assignments::list,
         crate::group_assignments::create,
         crate::group_assignments::get,
@@ -196,6 +204,17 @@ pub struct AppState {
         sync_routes::activity
     ),
     components(schemas(
+        crate::group_events::GroupEventFields,
+        crate::group_events::GroupEvent,
+        crate::group_events::GroupEventPage,
+        crate::group_events::CreateGroupEvent,
+        crate::group_events::GroupEventScope,
+        crate::group_events::UpdateGroupEvent,
+        crate::group_events::GroupEventVersion,
+        crate::group_events::GroupEventOccurrence,
+        crate::group_events::GroupEventOccurrencePage,
+        crate::group_events::GroupEventUndo,
+        crate::group_events::GroupEventUndoPage,
         crate::group_assignments::GroupAssignmentFilter,
         crate::group_assignments::AssignmentProgress,
         crate::group_assignments::GroupAssignment,
@@ -447,6 +466,30 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
     };
 
     let api = Router::new()
+        .route(
+            "/groups/{group_id}/events",
+            get(crate::group_events::list).post(crate::group_events::create),
+        )
+        .route(
+            "/groups/{group_id}/events/{event_id}",
+            get(crate::group_events::get).put(crate::group_events::update),
+        )
+        .route(
+            "/groups/{group_id}/event-occurrences",
+            get(crate::group_events::occurrences),
+        )
+        .route(
+            "/groups/{group_id}/events/{event_id}/delete-with-undo",
+            post(crate::group_events::delete),
+        )
+        .route(
+            "/groups/{group_id}/events/{event_id}/restore",
+            post(crate::group_events::restore),
+        )
+        .route(
+            "/groups/{group_id}/event-undos",
+            get(crate::group_events::undos),
+        )
         .route(
             "/groups/{group_id}/assignments",
             get(crate::group_assignments::list).post(crate::group_assignments::create),

@@ -35,6 +35,7 @@ impl Store {
             cursor: None,
             first: true,
             finished: false,
+            events: false,
             deadline: std::time::Instant::now() + std::time::Duration::from_secs(120),
         };
         Ok(futures_util::stream::try_unfold(
@@ -49,11 +50,24 @@ impl Store {
                 if let Some(prefix) = state.prefix.take() {
                     return Ok(Some((Bytes::from(prefix), state)));
                 }
-                let rows = state
-                    .store
-                    .group_assignment_export_page(state.user, state.cursor)
-                    .await?;
+                let rows = if state.events {
+                    state
+                        .store
+                        .group_event_export_page(state.user, state.cursor)
+                        .await?
+                } else {
+                    state
+                        .store
+                        .group_assignment_export_page(state.user, state.cursor)
+                        .await?
+                };
                 if rows.is_empty() {
+                    if !state.events {
+                        state.events = true;
+                        state.first = true;
+                        state.cursor = None;
+                        return Ok(Some((Bytes::from_static(b"],\"group_events\":["), state)));
+                    }
                     state.finished = true;
                     return Ok(Some((Bytes::from_static(b"]}"), state)));
                 }
@@ -330,6 +344,11 @@ fn export_error() -> AppError {
         message: "Could not finish the account export. Please download it again.".into(),
     }
 }
+#[derive(sqlx::FromRow)]
+pub(crate) struct GroupExportRow {
+    pub(crate) id: Uuid,
+    pub(crate) value: serde_json::Value,
+}
 struct JsonExportState {
     store: Store,
     user: Uuid,
@@ -337,6 +356,7 @@ struct JsonExportState {
     cursor: Option<Uuid>,
     first: bool,
     finished: bool,
+    events: bool,
     deadline: std::time::Instant,
 }
 #[derive(Serialize)]
