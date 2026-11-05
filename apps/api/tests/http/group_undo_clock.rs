@@ -1,7 +1,7 @@
 use super::groups::{call, create, fixture};
 use super::*;
 use chrono::{DateTime, Utc};
-use serde_json::{Value, json};
+use serde_json::json;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug)]
