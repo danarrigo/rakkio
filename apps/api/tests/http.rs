@@ -24,6 +24,10 @@ mod groups;
 mod handles;
 #[path = "http/rebrand.rs"]
 mod rebrand;
+#[path = "http/security_audit.rs"]
+mod security_audit;
+#[path = "http/security_expiry.rs"]
+mod security_expiry;
 #[path = "http/security_regressions.rs"]
 mod security_regressions;
 #[path = "http/upload_stream_regression.rs"]

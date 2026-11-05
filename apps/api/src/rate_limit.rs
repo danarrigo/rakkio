@@ -119,6 +119,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn active_identity_buckets_have_a_hard_capacity_limit() {
+        let limiter = LoginRateLimiter::default();
+        for n in 0..10000 {
+            limiter.check_key(&format!("fixture-{n}")).unwrap();
+        }
+        assert!(limiter.check_key("one-more-identity").is_err());
+        assert_eq!(limiter.attempts.lock().unwrap().len(), 10000);
+    }
+
+    #[test]
     fn limits_repeated_attempts_for_the_same_peer() {
         let limiter = LoginRateLimiter::default();
         let peer = Some("127.0.0.1:4000".parse().unwrap());
