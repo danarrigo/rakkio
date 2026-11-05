@@ -211,6 +211,7 @@ pub struct AppState {
         crate::group_events::GroupEventScope,
         crate::group_events::UpdateGroupEvent,
         crate::group_events::GroupEventVersion,
+        crate::group_events::GroupEventOrigin,
         crate::group_events::GroupEventOccurrence,
         crate::group_events::GroupEventOccurrencePage,
         crate::group_events::GroupEventUndo,

@@ -81,9 +81,15 @@ pub struct GroupEventRangeQuery {
     pub cursor: Option<Uuid>,
     pub limit: Option<i64>,
 }
+#[derive(Serialize, ToSchema, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "text", rename_all = "snake_case")]
+pub enum GroupEventOrigin {
+    GroupEvent,
+}
 #[derive(Serialize, ToSchema, FromRow)]
 pub struct GroupEventOccurrence {
-    pub origin: String,
+    pub origin: GroupEventOrigin,
     pub event_id: Uuid,
     pub group_id: Uuid,
     pub group_name: String,

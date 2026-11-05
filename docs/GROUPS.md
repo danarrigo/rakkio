@@ -1,6 +1,6 @@
 # Groups
 
-Status: staged implementation. Handles and gated membership are merged through PR #39. Shared assignments and private progress are implemented in PR #40; calendar integration and Discord group agendas remain subsequent phases in [GROUPS-PLAN.md](GROUPS-PLAN.md). Do not describe the whole feature as released.
+Status: staged implementation. Handles and gated membership are merged through PR #39. Shared assignments and private progress are implemented in PR #40. Group-event backend work is in draft PR #41; event UI, calendar integration and Discord group agendas remain unfinished phases in [GROUPS-PLAN.md](GROUPS-PLAN.md). Do not describe the whole feature as released.
 
 ## Rollout
 
@@ -80,6 +80,19 @@ Each group has **16 MiB / 20,000 logical records**. Existing hosted global limit
 An assignment costs one definition record plus one reserved progress record for every active member. Each progress slot reserves 512 bytes; the definition uses serialized variable-content size plus 256 fixed lifecycle bytes. These are logical reservations, not pre-created personal tasks or progress rows. New members reserve slots for retained assignments, including history and recoverable deletions. Admission/publication fails atomically if group/global capacity is insufficient; it does not consume an invitation or partially enroll a member.
 
 Reserved capacity allows existing members to complete/reopen work when the budget is full, without quota changes revealing private activity. Closing, deleting and restoring unchanged content also need no new lifecycle capacity. Leaving/erasure/purge releases reservations. Deferred accounting applies final transaction-net deltas across personal/group scopes, locking the global counter before scoped counters. Future shared-content migrations must preserve this accounting and recount changed tracked row shapes.
+
+## Group-event foundation (phase 4, draft)
+
+Draft PR #41 adds canonical group-owned event series, not personal calendars/events. Fields include local civil start/end, an explicit IANA timezone, timed/all-day choice, description/location and none/daily/weekly/monthly/yearly recurrence. No attendee directory, personal copies or Google fan-out are introduced.
+
+- Ordinary members read; current leaders publish/edit/delete. Every mutation binds the actor and current version. Updates/deletion/restore explicitly require `scope: series`, applying to the definition and all its occurrences. Occurrence-only/following edits are not implemented; requests cannot silently fall back to changing a whole series.
+- All-day dates are floating civil dates with an exclusive end midnight, emitted as canonical UTC-midnight dates for display without viewer-zone shifting. Timed recurrence keeps the event-zone wall clock. Ambiguous times use standard time; nonexistent seed times are rejected and nonexistent recurring starts/ends are skipped.
+- Missing monthly/leap dates are skipped rather than clamped. Recurring multi-day ends preserve the original civil duration, avoiding month-end end-date clamping. The final recurrence date is inclusive in the event zone.
+- A definition lasts at most 31 civil days. Occurrence reads cover 1-42 viewer civil days and at most 25 candidate series per page, generating nearby periods only. Pages can be empty with a continuation cursor, for example a leap-day series in a non-leap year. Clients must honor the cursor rather than infer that the whole range is empty. Typed `group_event` origin, group identity, original occurrence date, version and current edit capability prevent personal/group ID confusion.
+- Event definitions cost one logical record and serialized variable-content bytes plus fixed lifecycle capacity, not one copy/progress slot per member. The existing group/global budget, final-net accounting and cascade-delete credits apply. Whole-series deletion has the same bounded 60-second membership/version-safe Undo, no permanent fallback.
+- Authorized event definitions join the streamed JSON account export, with active-membership checks on every page. Personal calendar-event/ICS ownership remains unchanged.
+
+This is a backend foundation, not working shared web agendas yet. Event management UI, selected-group preferences, Today/calendar composition, visual acceptance and Discord still need implementation before rollout. Migration 0032 is unmerged; deployed migrations 0030/0031 must never be edited.
 
 ## Engineering / verification
 

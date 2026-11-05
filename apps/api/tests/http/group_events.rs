@@ -412,6 +412,177 @@ async fn group_events_bill_once_not_per_member_and_purge_releases_quota_with_ful
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn group_event_occurrence_pages_keep_every_overlapping_instance_and_expose_empty_page_continuations(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (r, _, [owner, _, _, _]) = fixture(&pool).await?;
+    let g = create(&r, owner).await?;
+    for _ in 0..3 {
+        publish(
+            &r,
+            owner,
+            &g,
+            fields("1990-01-01T00:00:00", "1990-01-31T00:00:00", "daily", false),
+        )
+        .await?;
+    }
+    publish(
+        &r,
+        owner,
+        &g,
+        fields(
+            "2024-02-29T09:00:00",
+            "2024-02-29T10:00:00",
+            "yearly",
+            false,
+        ),
+    )
+    .await?;
+    let base = format!(
+        "/api/v1/groups/{}/event-occurrences?from=2027-03-01&until=2027-03-02&timezone=America%2FNew_York&limit=1",
+        g["id"].as_str().unwrap()
+    );
+    let (s, first) = call(&r, owner, "GET", &base, Value::Null).await?;
+    assert_eq!(s, StatusCode::OK, "{first}");
+    assert_eq!(first["items"], json!([]));
+    assert!(first["next_cursor"].is_string());
+    let mut cursor = first["next_cursor"].as_str().map(str::to_owned);
+    let mut keys = std::collections::HashSet::new();
+    for _ in 0..4 {
+        let Some(current) = cursor.take() else {
+            break;
+        };
+        let (s, p) = call(
+            &r,
+            owner,
+            "GET",
+            &format!("{base}&cursor={current}"),
+            Value::Null,
+        )
+        .await?;
+        assert_eq!(s, StatusCode::OK, "{p}");
+        assert_eq!(p["items"].as_array().unwrap().len(), 30);
+        for e in p["items"].as_array().unwrap() {
+            assert_eq!(e["can_edit"], true);
+            assert!(keys.insert(format!("{}:{}", e["event_id"], e["original_date"])));
+        }
+        cursor = p["next_cursor"].as_str().map(str::to_owned);
+    }
+    assert!(cursor.is_none());
+    assert_eq!(keys.len(), 90);
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn group_event_undo_rechecks_public_membership_changes_but_not_private_progress_preferences(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let (r, _, [owner, alice, _, _]) = fixture(&pool).await?;
+    let g = create(&r, owner).await?;
+    let e = publish(&r, owner, &g, event_body()).await?;
+    let endpoint = format!("{}/{}", path(&g), e["id"].as_str().unwrap());
+    let (s, u) = call(
+        &r,
+        owner,
+        "POST",
+        &format!("{endpoint}/delete-with-undo"),
+        json!({"scope":"series","expected_version":e["version"]}),
+    )
+    .await?;
+    assert_eq!(s, StatusCode::OK);
+    let (s,_)=call(&r,owner,"POST",&format!("/api/v1/groups/{}/preferences",g["id"].as_str().unwrap()),json!({"expected_membership_id":g["my_membership_id"],"expected_version":1,"share_progress":true,"notice_version":"2026-11-04-progress"})).await?;
+    assert_eq!(s, StatusCode::OK);
+    let (s, restored) = call(
+        &r,
+        owner,
+        "POST",
+        &format!("{endpoint}/restore"),
+        json!({"scope":"series","expected_version":u["version"]}),
+    )
+    .await?;
+    assert_eq!(s, StatusCode::OK);
+    let (s, u) = call(
+        &r,
+        owner,
+        "POST",
+        &format!("{endpoint}/delete-with-undo"),
+        json!({"scope":"series","expected_version":restored["version"]}),
+    )
+    .await?;
+    assert_eq!(s, StatusCode::OK);
+    let i = invite(&r, owner, &g, "direct", Some("alice"), 1).await?;
+    assert_eq!(join(&r, alice, &i).await?.0, StatusCode::OK);
+    assert_eq!(
+        call(
+            &r,
+            owner,
+            "POST",
+            &format!("{endpoint}/restore"),
+            json!({"scope":"series","expected_version":u["version"]})
+        )
+        .await?
+        .0,
+        StatusCode::CONFLICT
+    );
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn leader_created_events_survive_creator_departure_and_uncommitted_group_purge_clears_all_billing(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    use super::groups::{action, detail, member};
+    let (r, _, [owner, alice, _, _]) = fixture(&pool).await?;
+    let g = create(&r, owner).await?;
+    let i = invite(&r, owner, &g, "direct", Some("alice"), 1).await?;
+    assert_eq!(join(&r, alice, &i).await?.0, StatusCode::OK);
+    let view = detail(&r, owner, &g).await?;
+    let m = member(&view, "alice");
+    assert_eq!(action(&r,owner,&g,json!({"kind":"set_role","membership_id":m["id"],"expected_membership_version":m["version"],"role":"leader"})).await?.0,StatusCode::OK);
+    let e = publish(&r, alice, &g, event_body()).await?;
+    let view = detail(&r, owner, &g).await?;
+    let m = member(&view, "alice");
+    assert_eq!(action(&r,owner,&g,json!({"kind":"remove","membership_id":m["id"],"expected_membership_version":m["version"]})).await?.0,StatusCode::OK);
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(alice)
+        .execute(&pool)
+        .await?;
+    assert_eq!(
+        call(
+            &r,
+            owner,
+            "GET",
+            &format!("{}/{}", path(&g), e["id"].as_str().unwrap()),
+            Value::Null
+        )
+        .await?
+        .0,
+        StatusCode::OK
+    );
+    let mut tx = pool.begin().await?;
+    let gid = g["id"].as_str().unwrap().parse::<uuid::Uuid>()?;
+    sqlx::query("INSERT INTO group_events(id,group_id,title,starts_local,ends_local,timezone) VALUES($1,$2,'Uncommitted event','2027-03-01T09:00:00','2027-03-01T10:00:00','UTC')").bind(uuid::Uuid::now_v7()).bind(gid).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM groups WHERE id=$1")
+        .bind(gid)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT records FROM workspace_content_total")
+            .fetch_one(&pool)
+            .await?,
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT bytes FROM workspace_content_total")
+            .fetch_one(&pool)
+            .await?,
+        0
+    );
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn group_event_exports_are_scoped_and_personal_id_collisions_do_not_cross_ownership(
     pool: PgPool,
 ) -> anyhow::Result<()> {
