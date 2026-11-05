@@ -218,18 +218,19 @@ impl Store {
         lock_users(&mut tx, user, vec![]).await?;
         let a = write_access(&mut tx, user, group).await?;
         a.leader(user)?;
+        let timezone = body.deadline_timezone.as_deref().unwrap_or(&a.timezone);
         let (title, time) = fields(
             &mut tx,
             &body.title,
             &body.description,
             body.due_on,
             body.due_time.as_deref(),
-            &a.timezone,
+            timezone,
         )
         .await?;
         let id = Uuid::now_v7();
         sqlx::query("INSERT INTO group_assignments(id,group_id,title,description,due_on,due_time,timezone) VALUES($1,$2,$3,$4,$5,$6,$7)")
-            .bind(id).bind(group).bind(title).bind(body.description).bind(body.due_on).bind(time).bind(a.timezone).execute(&mut *tx).await?;
+            .bind(id).bind(group).bind(title).bind(body.description).bind(body.due_on).bind(time).bind(timezone).execute(&mut *tx).await?;
         let result = assignment(&mut tx, a.my_membership_id, group, id).await?;
         tx.commit().await?;
         Ok(result)

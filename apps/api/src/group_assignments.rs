@@ -72,6 +72,7 @@ pub struct CreateGroupAssignment {
     pub description: String,
     pub due_on: Option<NaiveDate>,
     pub due_time: Option<String>,
+    pub deadline_timezone: Option<String>,
 }
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]

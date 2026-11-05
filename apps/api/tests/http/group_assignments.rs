@@ -474,6 +474,9 @@ async fn shared_assignment_deadlines_snapshot_timezone_and_reject_nonexistent_cl
     let (_, b) = call(&r, owner, "PUT", &item(&g, &a), edit(&a)).await?;
     assert_eq!(b["timezone"], "Asia/Jakarta");
     assert_eq!(b["due_at"], a["due_at"]);
+    let (s,explicit)=call(&r,owner,"POST",&work(&g),json!({"title":"Explicit deadline timezone","due_on":"2026-11-12","deadline_timezone":"Asia/Jakarta"})).await?;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(explicit["due_at"], a["due_at"]);
     for body in [
         json!({"title":"Gap","due_on":"2027-03-14","due_time":"02:30"}),
         json!({"title":"No date","due_time":"10:00"}),
