@@ -56,6 +56,7 @@ pub async fn list_files(
         (status = 201, body = FileRecord),
         (status = 401, body = ErrorResponse),
         (status = 403, body = ErrorResponse),
+        (status = 409, body = ErrorResponse),
         (status = 413, body = ErrorResponse),
         (status = 422, body = ErrorResponse)
     ),
