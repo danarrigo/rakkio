@@ -1,6 +1,7 @@
 services:
   - type: web
-    name: prosepect-api
+    # Match the existing service; retain its legacy onrender.com hostname.
+    name: rakkio-api
     runtime: docker
     plan: free
     region: singapore
