@@ -269,7 +269,23 @@ async fn cancelled_upload_stays_charged_until_cleanup_is_confirmed(
     )
     .execute(&pool)
     .await?;
-    let response = router.oneshot(erase()).await?;
+    // Recover via the upload entrypoint while housekeeping remains paused;
+    // admission stays blocked, but acknowledged cleanup must release quota.
+    let recovered = upload(router.clone()).await??;
+    assert_eq!(recovered.status(), StatusCode::CONFLICT);
+    let _ = to_bytes(recovered.into_body(), 65536).await?;
+    assert_eq!(
+        Store::from_pool(pool.clone())
+            .file_usage_bytes(DEVELOPMENT_USER_ID)
+            .await?,
+        0
+    );
+    assert!(bucket.objects.lock().unwrap().is_empty());
+    // User erasure cascades into the receipt table used to pause maintenance.
+    // Release that test-only guard only after cleanup is fully asserted.
+    maintenance.rollback().await?;
+    let response =
+        tokio::time::timeout(std::time::Duration::from_secs(10), router.oneshot(erase())).await??;
     let status = response.status();
     let _ = to_bytes(response.into_body(), 65536).await?;
     assert_eq!(status, StatusCode::NO_CONTENT);
