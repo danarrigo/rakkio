@@ -222,6 +222,11 @@ async fn forwarded_chains_cannot_rotate_authentication_rate_limit_identity(
 async fn cancelled_upload_stays_charged_until_cleanup_is_confirmed(
     pool: PgPool,
 ) -> anyhow::Result<()> {
+    // Drive cleanup through the HTTP erasure path, not a racing timer tick.
+    let mut maintenance = pool.begin().await?;
+    sqlx::query("LOCK TABLE task_delete_undos IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *maintenance)
+        .await?;
     let (router, bucket, server) = upload_fixture(&pool).await?;
     let pending = upload(router.clone());
     tokio::time::timeout(std::time::Duration::from_secs(5), bucket.started.notified()).await?;

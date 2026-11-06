@@ -4,6 +4,19 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 use uuid::Uuid;
 
+// Keep independent housekeeping from purging a grant/group before its
+// authorization check runs. Group API operations do not use this personal
+// receipt table; the maintenance loop always visits it before group cleanup.
+async fn pause_maintenance(
+    pool: &PgPool,
+) -> anyhow::Result<sqlx::Transaction<'static, sqlx::Postgres>> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("LOCK TABLE task_delete_undos IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *tx)
+        .await?;
+    Ok(tx)
+}
+
 async fn waiting_start(pool: &PgPool, pid: i32) -> anyhow::Result<DateTime<Utc>> {
     Ok(tokio::time::timeout(std::time::Duration::from_secs(5),async {loop {
   let began:Option<DateTime<Utc>>=sqlx::query_scalar("SELECT xact_start FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid)) LIMIT 1").bind(pid).fetch_optional(pool).await?;
@@ -28,6 +41,7 @@ async fn lock_actor(
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn expired_invitation_cannot_admit_after_actor_lock_wait(pool: PgPool) -> anyhow::Result<()> {
+    let _maintenance = pause_maintenance(&pool).await?;
     let (router, _, [owner, alice, _, _]) = fixture(&pool).await?;
     let g = create(&router, owner).await?;
     let invitation = invite(&router, owner, &g, "direct", Some("alice"), 1).await?;
@@ -56,6 +70,7 @@ async fn expired_invitation_cannot_admit_after_actor_lock_wait(pool: PgPool) -> 
 async fn expired_ownership_offer_cannot_transfer_after_actor_lock_wait(
     pool: PgPool,
 ) -> anyhow::Result<()> {
+    let _maintenance = pause_maintenance(&pool).await?;
     let (router, _, [owner, alice, _, _]) = fixture(&pool).await?;
     let g = create(&router, owner).await?;
     let invitation = invite(&router, owner, &g, "direct", Some("alice"), 1).await?;
@@ -106,6 +121,7 @@ async fn expired_ownership_offer_cannot_transfer_after_actor_lock_wait(
 async fn expired_invitation_cannot_be_approved_after_actor_lock_wait(
     pool: PgPool,
 ) -> anyhow::Result<()> {
+    let _maintenance = pause_maintenance(&pool).await?;
     let (router, _, [owner, alice, _, _]) = fixture(&pool).await?;
     let group = create(&router, owner).await?;
     let invitation = invite(&router, owner, &group, "link", None, 1).await?;
@@ -152,6 +168,7 @@ enum Recovery {
     Assignment,
 }
 async fn recovery_expiry(pool: PgPool, target: Recovery) -> anyhow::Result<()> {
+    let _maintenance = pause_maintenance(&pool).await?;
     let (router, _, [owner, _, _, _]) = fixture(&pool).await?;
     let g = create(&router, owner).await?;
     let root = format!("/api/v1/groups/{}", g["id"].as_str().unwrap());
