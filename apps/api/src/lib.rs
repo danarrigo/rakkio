@@ -12,6 +12,7 @@ pub mod error;
 pub mod export_routes;
 mod export_store;
 pub mod extract;
+pub mod file_lifecycle;
 pub mod file_routes;
 pub mod file_storage;
 mod file_store;

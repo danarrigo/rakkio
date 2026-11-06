@@ -484,7 +484,7 @@ impl Store {
                 a.leader(user)?;
                 let (target,invite,version,notice):(Uuid,Uuid,i32,String)=sqlx::query_as("SELECT user_id,invitation_id,invitation_version,roster_notice_version FROM group_join_requests WHERE group_id=$1 AND id=$2 AND version=$3 AND state='pending'").bind(id).bind(request_id).bind(expected_request_version).fetch_optional(&mut *tx).await?.ok_or(AppError::Conflict("Join request changed. Refresh before continuing.".into()))?;
                 if approve {
-                    let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_invitations WHERE id=$1 AND group_id=$2 AND version=$3 AND revoked_at IS NULL AND expires_at>NOW() AND uses<max_uses)").bind(invite).bind(id).bind(version).fetch_one(&mut *tx).await?;
+                    let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_invitations WHERE id=$1 AND group_id=$2 AND version=$3 AND revoked_at IS NULL AND expires_at>clock_timestamp() AND uses<max_uses)").bind(invite).bind(id).bind(version).fetch_one(&mut *tx).await?;
                     if !valid {
                         return Err(AppError::Conflict(
                             "The invitation is no longer valid.".into(),
@@ -501,10 +501,10 @@ impl Store {
                 if target == user {
                     return Err(AppError::Validation("Choose another active member.".into()));
                 }
-                sqlx::query("INSERT INTO group_ownership_offers(id,group_id,from_user_id,to_membership_id,group_version,expires_at) VALUES($1,$2,$3,$4,$5,NOW()+INTERVAL '1 day') ON CONFLICT(group_id) DO UPDATE SET id=EXCLUDED.id,from_user_id=EXCLUDED.from_user_id,to_membership_id=EXCLUDED.to_membership_id,group_version=EXCLUDED.group_version,expires_at=EXCLUDED.expires_at").bind(Uuid::now_v7()).bind(id).bind(user).bind(membership_id).bind(a.version).execute(&mut *tx).await?;
+                sqlx::query("INSERT INTO group_ownership_offers(id,group_id,from_user_id,to_membership_id,group_version,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+INTERVAL '1 day') ON CONFLICT(group_id) DO UPDATE SET id=EXCLUDED.id,from_user_id=EXCLUDED.from_user_id,to_membership_id=EXCLUDED.to_membership_id,group_version=EXCLUDED.group_version,expires_at=EXCLUDED.expires_at").bind(Uuid::now_v7()).bind(id).bind(user).bind(membership_id).bind(a.version).execute(&mut *tx).await?;
             }
             GroupAction::AcceptOwnership { offer_id } => {
-                let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_ownership_offers WHERE group_id=$1 AND id=$2 AND from_user_id=$3 AND to_membership_id=$4 AND group_version=$5 AND expires_at>NOW())").bind(id).bind(offer_id).bind(a.owner_id).bind(a.my_membership_id).bind(a.version).fetch_one(&mut *tx).await?;
+                let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_ownership_offers WHERE group_id=$1 AND id=$2 AND from_user_id=$3 AND to_membership_id=$4 AND group_version=$5 AND expires_at>clock_timestamp())").bind(id).bind(offer_id).bind(a.owner_id).bind(a.my_membership_id).bind(a.version).fetch_one(&mut *tx).await?;
                 if !valid {
                     return Err(AppError::NotFound("ownership offer"));
                 }
@@ -549,11 +549,11 @@ impl Store {
                 if confirmation != "DELETE GROUP" {
                     return Err(AppError::Validation("Confirm with DELETE GROUP.".into()));
                 }
-                sqlx::query("UPDATE groups SET deleted_at=NOW(),undo_until=NOW()+INTERVAL '60 seconds',deleted_membership_epoch=membership_epoch,version=version+1 WHERE id=$1").bind(id).execute(&mut *tx).await?;
+                sqlx::query("UPDATE groups SET deleted_at=clock_timestamp(),undo_until=clock_timestamp()+INTERVAL '60 seconds',deleted_membership_epoch=membership_epoch,version=version+1 WHERE id=$1").bind(id).execute(&mut *tx).await?;
             }
             GroupAction::Restore => {
                 a.owner(user)?;
-                let changed=sqlx::query("UPDATE groups SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE id=$1 AND undo_until>NOW() AND deleted_membership_epoch=membership_epoch").bind(id).execute(&mut *tx).await?;
+                let changed=sqlx::query("UPDATE groups SET deleted_at=NULL,undo_until=NULL,deleted_membership_epoch=NULL,version=version+1 WHERE id=$1 AND undo_until>clock_timestamp() AND deleted_membership_epoch=membership_epoch").bind(id).execute(&mut *tx).await?;
                 if changed.rows_affected() != 1 {
                     return Err(AppError::Conflict("Undo expired or group membership changed. The group cannot be restored safely.".into()));
                 }
@@ -620,11 +620,11 @@ async fn invitation(
             ));
         }
     };
-    sqlx::query_as("SELECT i.id,i.group_id,i.kind,i.version,(i.revoked_at IS NULL AND i.expires_at>NOW() AND i.uses<i.max_uses) AS valid,g.name AS group_name,g.approval_required FROM group_invitations i JOIN groups g ON g.id=i.group_id WHERE g.deleted_at IS NULL AND (($1::uuid IS NOT NULL AND i.id=$1 AND i.kind='direct' AND i.recipient_id=$3) OR ($2::bytea IS NOT NULL AND i.secret_hash=$2))")
+    sqlx::query_as("SELECT i.id,i.group_id,i.kind,i.version,(i.revoked_at IS NULL AND i.expires_at>clock_timestamp() AND i.uses<i.max_uses) AS valid,g.name AS group_name,g.approval_required FROM group_invitations i JOIN groups g ON g.id=i.group_id WHERE g.deleted_at IS NULL AND (($1::uuid IS NOT NULL AND i.id=$1 AND i.kind='direct' AND i.recipient_id=$3) OR ($2::bytea IS NOT NULL AND i.secret_hash=$2))")
         .bind(id).bind(digest).bind(user).fetch_optional(c).await?.ok_or(AppError::NotFound("invitation"))
 }
 async fn consume_invite(c: &mut PgConnection, id: Uuid) -> AppResult<()> {
-    let changed=sqlx::query("UPDATE group_invitations SET uses=uses+1,revoked_at=CASE WHEN uses+1=max_uses THEN NOW() ELSE revoked_at END WHERE id=$1 AND revoked_at IS NULL AND expires_at>NOW() AND uses<max_uses").bind(id).execute(c).await?;
+    let changed=sqlx::query("UPDATE group_invitations SET uses=uses+1,revoked_at=CASE WHEN uses+1=max_uses THEN NOW() ELSE revoked_at END WHERE id=$1 AND revoked_at IS NULL AND expires_at>clock_timestamp() AND uses<max_uses").bind(id).execute(c).await?;
     if changed.rows_affected() != 1 {
         return Err(AppError::Conflict(
             "The invitation is no longer valid.".into(),
@@ -746,7 +746,7 @@ impl Store {
             .map(|s| Sha256::digest(s.as_bytes()).to_vec());
         let id = Uuid::now_v7();
         // A collision never overwrites another group's credential.
-        let inserted=sqlx::query("INSERT INTO group_invitations(id,group_id,issuer_id,kind,recipient_id,secret_hash,expires_at,max_uses) VALUES($1,$2,$3,$4,$5,$6,NOW()+INTERVAL '7 days',$7) ON CONFLICT(secret_hash) DO NOTHING")
+        let inserted=sqlx::query("INSERT INTO group_invitations(id,group_id,issuer_id,kind,recipient_id,secret_hash,expires_at,max_uses) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp()+INTERVAL '7 days',$7) ON CONFLICT(secret_hash) DO NOTHING")
             .bind(id).bind(group).bind(user).bind(body.kind).bind(recipient).bind(hash).bind(body.max_uses).execute(&mut *tx).await?;
         if inserted.rows_affected() != 1 {
             return Err(AppError::Conflict(
@@ -876,7 +876,7 @@ impl Store {
                 "The owner must allow future invitations after removal.",
             ));
         }
-        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_invitations WHERE id=$1 AND version=$2 AND revoked_at IS NULL AND expires_at>NOW() AND uses<max_uses)").bind(i.id).bind(i.version).fetch_one(&mut *tx).await?;
+        let valid:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM group_invitations WHERE id=$1 AND version=$2 AND revoked_at IS NULL AND expires_at>clock_timestamp() AND uses<max_uses)").bind(i.id).bind(i.version).fetch_one(&mut *tx).await?;
         if !valid {
             return Err(AppError::NotFound("invitation"));
         }

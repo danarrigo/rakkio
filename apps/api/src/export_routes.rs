@@ -116,6 +116,13 @@ pub async fn delete_account(
             "account deletion confirmation must equal DELETE".to_owned(),
         ));
     }
+    crate::file_lifecycle::cleanup_pending_uploads(
+        &state.store,
+        &state.file_storage,
+        Some(user_id),
+        8,
+    )
+    .await?;
     state.store.prepare_account_deletion(user_id).await?;
     match state.store.google_credentials(user_id).await {
         Ok(credentials) => {

@@ -61,6 +61,7 @@ pub struct Config {
     pub invite_only: bool,
     pub groups_enabled: bool,
     pub trust_proxy_headers: bool,
+    pub trusted_proxy_ip_header: crate::rate_limit::ProxyIpHeader,
     pub google_oauth: Option<GoogleOAuthConfig>,
     pub discord: Option<crate::discord::DiscordConfig>,
     pub object_storage: ObjectStorageConfig,
@@ -121,6 +122,16 @@ impl Config {
             .unwrap_or_else(|_| "false".to_owned())
             .parse()
             .context("TRUST_PROXY_HEADERS must be true or false")?;
+        // Render's public ingress overwrites CF-Connecting-IP but appends XFF.
+        // Existing deployments must get the safe policy without an env cutover.
+        let default_header = if env::var("RENDER").as_deref() == Ok("true") {
+            "cf-connecting-ip"
+        } else {
+            "x-forwarded-for"
+        };
+        let trusted_proxy_ip_header = env::var("TRUSTED_PROXY_IP_HEADER")
+            .unwrap_or_else(|_| default_header.to_owned())
+            .parse()?;
 
         let google_values = [
             env_nonempty("GOOGLE_CLIENT_ID"),
@@ -241,6 +252,7 @@ impl Config {
             invite_only,
             groups_enabled,
             trust_proxy_headers,
+            trusted_proxy_ip_header,
             google_oauth,
             discord,
             object_storage,

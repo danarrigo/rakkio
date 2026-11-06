@@ -415,16 +415,18 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         .transpose()?;
     let sync_dispatcher = sync_service
         .clone()
-        .map(SyncDispatcher::start)
-        .unwrap_or_else(|| SyncDispatcher::start_maintenance(store.clone()));
+        .map(|service| SyncDispatcher::start(service, file_storage.clone()))
+        .unwrap_or_else(|| SyncDispatcher::start_maintenance(store.clone(), file_storage.clone()));
     let state = AppState {
         store,
         allow_insecure_dev_auth: config.allow_insecure_dev_auth,
         invite_only: config.invite_only,
         groups_enabled: config.groups_enabled,
         trust_proxy_headers: config.trust_proxy_headers,
-        login_rate_limiter: LoginRateLimiter::default(),
-        action_rate_limiter: LoginRateLimiter::with_limit(60),
+        login_rate_limiter: LoginRateLimiter::default()
+            .with_proxy_header(config.trusted_proxy_ip_header),
+        action_rate_limiter: LoginRateLimiter::with_limit(60)
+            .with_proxy_header(config.trusted_proxy_ip_header),
         request_limits: Default::default(),
         secure_cookies: config.environment == Environment::Production,
         app_url: config.app_url.clone(),

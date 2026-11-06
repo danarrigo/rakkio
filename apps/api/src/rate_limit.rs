@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -27,10 +28,44 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientAddress {
     }
 }
 
+/// A single IP overwritten by the configured ingress, never a forwarded chain.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum ProxyIpHeader {
+    #[default]
+    XForwardedFor,
+    CfConnectingIp,
+}
+impl FromStr for ProxyIpHeader {
+    type Err = anyhow::Error;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "x-forwarded-for" => Ok(Self::XForwardedFor),
+            "cf-connecting-ip" => Ok(Self::CfConnectingIp),
+            _ => {
+                anyhow::bail!("TRUSTED_PROXY_IP_HEADER must be x-forwarded-for or cf-connecting-ip")
+            }
+        }
+    }
+}
+impl ProxyIpHeader {
+    fn name(self) -> &'static str {
+        match self {
+            Self::XForwardedFor => "x-forwarded-for",
+            Self::CfConnectingIp => "cf-connecting-ip",
+        }
+    }
+}
+#[derive(Default)]
+struct Buckets {
+    entries: HashMap<String, VecDeque<Instant>>,
+    last_sweep: Option<Instant>,
+}
+const MAX_IDENTITIES: usize = 10_000;
 #[derive(Clone)]
 pub struct LoginRateLimiter {
-    attempts: Arc<Mutex<HashMap<String, VecDeque<Instant>>>>,
+    attempts: Arc<Mutex<Buckets>>,
     limit: usize,
+    proxy_header: ProxyIpHeader,
     window: Duration,
     message: &'static str,
 }
@@ -38,8 +73,9 @@ pub struct LoginRateLimiter {
 impl Default for LoginRateLimiter {
     fn default() -> Self {
         Self {
-            attempts: Arc::new(Mutex::new(HashMap::new())),
+            attempts: Arc::new(Mutex::new(Buckets::default())),
             limit: 10,
+            proxy_header: ProxyIpHeader::default(),
             window: Duration::from_secs(60),
             message: "too many authentication attempts; try again shortly",
         }
@@ -49,11 +85,17 @@ impl Default for LoginRateLimiter {
 impl LoginRateLimiter {
     pub fn with_limit(limit: usize) -> Self {
         Self {
-            attempts: Arc::new(Mutex::new(HashMap::new())),
+            attempts: Arc::new(Mutex::new(Buckets::default())),
             limit,
+            proxy_header: ProxyIpHeader::default(),
             window: Duration::from_secs(60),
             message: "too many requests; try again shortly",
         }
+    }
+
+    pub fn with_proxy_header(mut self, header: ProxyIpHeader) -> Self {
+        self.proxy_header = header;
+        self
     }
 
     pub fn check(
@@ -62,7 +104,7 @@ impl LoginRateLimiter {
         peer: Option<SocketAddr>,
         trust_proxy_headers: bool,
     ) -> AppResult<()> {
-        let key = client_key(headers, peer, trust_proxy_headers);
+        let key = client_key(headers, peer, trust_proxy_headers, self.proxy_header);
         self.check_key(&key)
     }
 
@@ -73,7 +115,24 @@ impl LoginRateLimiter {
             status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             message: "rate limiter is unavailable".to_owned(),
         })?;
-        let entries = attempts.entry(key.to_owned()).or_default();
+        if attempts
+            .last_sweep
+            .is_none_or(|last| now.duration_since(last) >= Duration::from_secs(1))
+        {
+            attempts
+                .entries
+                .retain(|_, entries| entries.back().is_some_and(|instant| *instant > cutoff));
+            attempts.last_sweep = Some(now);
+        }
+        if key.len() > 128
+            || (!attempts.entries.contains_key(key) && attempts.entries.len() >= MAX_IDENTITIES)
+        {
+            return Err(AppError::InvalidRequest {
+                status: axum::http::StatusCode::TOO_MANY_REQUESTS,
+                message: self.message.to_owned(),
+            });
+        }
+        let entries = attempts.entries.entry(key.to_owned()).or_default();
         while entries.front().is_some_and(|instant| *instant <= cutoff) {
             entries.pop_front();
         }
@@ -84,30 +143,25 @@ impl LoginRateLimiter {
             });
         }
         entries.push_back(now);
-        if attempts.len() > 10_000 {
-            attempts.retain(|_, entries| entries.back().is_some_and(|instant| *instant > cutoff));
-        }
         Ok(())
     }
 }
 
-fn client_key(headers: &HeaderMap, peer: Option<SocketAddr>, trust_proxy_headers: bool) -> String {
+fn client_key(
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    trust_proxy_headers: bool,
+    proxy_header: ProxyIpHeader,
+) -> String {
     if trust_proxy_headers {
-        if let Some(value) = headers
-            .get("x-forwarded-for")
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.split(',').next())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+        let mut values = headers.get_all(proxy_header.name()).iter();
+        let first = values.next();
+        if values.next().is_none()
+            && let Some(ip) = first
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.trim().parse::<IpAddr>().ok())
         {
-            return value.to_owned();
-        }
-        if let Some(value) = headers
-            .get("x-real-ip")
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.is_empty())
-        {
-            return value.to_owned();
+            return ip.to_string();
         }
     }
     peer.map(|peer| peer.ip().to_string())
@@ -117,6 +171,16 @@ fn client_key(headers: &HeaderMap, peer: Option<SocketAddr>, trust_proxy_headers
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn active_identity_buckets_have_a_hard_capacity_limit() {
+        let limiter = LoginRateLimiter::default();
+        for n in 0..10000 {
+            limiter.check_key(&format!("fixture-{n}")).unwrap();
+        }
+        assert!(limiter.check_key("one-more-identity").is_err());
+        assert_eq!(limiter.attempts.lock().unwrap().entries.len(), 10000);
+    }
 
     #[test]
     fn limits_repeated_attempts_for_the_same_peer() {
@@ -129,15 +193,68 @@ mod tests {
     }
 
     #[test]
+    fn selected_ingress_header_is_single_validated_and_canonical() {
+        let peer = Some("127.0.0.1:4000".parse().unwrap());
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.1, 10.0.0.1".parse().unwrap());
+        headers.insert("cf-connecting-ip", "2001:0db8:0:0::1".parse().unwrap());
+        assert_eq!(
+            client_key(&headers, peer, true, ProxyIpHeader::CfConnectingIp),
+            "2001:db8::1"
+        );
+        assert_eq!(
+            client_key(&headers, peer, true, ProxyIpHeader::XForwardedFor),
+            "127.0.0.1"
+        );
+        headers.append("cf-connecting-ip", "203.0.113.2".parse().unwrap());
+        assert_eq!(
+            client_key(&headers, peer, true, ProxyIpHeader::CfConnectingIp),
+            "127.0.0.1"
+        );
+        headers.insert("x-forwarded-for", "203.0.113.4".parse().unwrap());
+        assert_eq!(
+            client_key(&headers, peer, true, ProxyIpHeader::XForwardedFor),
+            "203.0.113.4"
+        );
+    }
+
+    #[test]
+    fn stale_buckets_are_reclaimed_but_oversized_keys_never_allocate() {
+        let limiter = LoginRateLimiter::default();
+        assert!(limiter.check_key(&"x".repeat(4096)).is_err());
+        assert!(limiter.attempts.lock().unwrap().entries.is_empty());
+        let before = Instant::now() - Duration::from_secs(61);
+        {
+            let mut buckets = limiter.attempts.lock().unwrap();
+            buckets.entries = (0..MAX_IDENTITIES)
+                .map(|n| (format!("stale-{n}"), VecDeque::from([before])))
+                .collect();
+            buckets.last_sweep = None;
+        }
+        limiter.check_key("fresh").unwrap();
+        assert_eq!(limiter.attempts.lock().unwrap().entries.len(), 1);
+    }
+
+    #[test]
     fn only_trusts_forwarded_addresses_when_configured() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "203.0.113.4".parse().unwrap());
         assert_eq!(
-            client_key(&headers, Some("127.0.0.1:4000".parse().unwrap()), false),
+            client_key(
+                &headers,
+                Some("127.0.0.1:4000".parse().unwrap()),
+                false,
+                ProxyIpHeader::default()
+            ),
             "127.0.0.1"
         );
         assert_eq!(
-            client_key(&headers, Some("127.0.0.1:4000".parse().unwrap()), true),
+            client_key(
+                &headers,
+                Some("127.0.0.1:4000".parse().unwrap()),
+                true,
+                ProxyIpHeader::default()
+            ),
             "203.0.113.4"
         );
     }

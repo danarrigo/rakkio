@@ -9,6 +9,7 @@ x-runtime: &runtime
   APP_URL: https://${APP_HOST:?configure first}
   CORS_ALLOWED_ORIGIN: https://${APP_HOST:?configure first}
   TRUST_PROXY_HEADERS: "true"
+  TRUSTED_PROXY_IP_HEADER: x-forwarded-for
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?configure first}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?configure first}
   GOOGLE_REDIRECT_URI: https://${APP_HOST}/api/v1/auth/google/callback

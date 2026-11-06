@@ -56,6 +56,7 @@ pub async fn list_files(
         (status = 201, body = FileRecord),
         (status = 401, body = ErrorResponse),
         (status = 403, body = ErrorResponse),
+        (status = 409, body = ErrorResponse),
         (status = 413, body = ErrorResponse),
         (status = 422, body = ErrorResponse)
     ),
@@ -133,6 +134,8 @@ pub async fn upload_file(
         message: "file upload timed out".to_owned(),
     })??;
     let upload = upload.ok_or_else(|| AppError::Validation("file is required".to_owned()))?;
+    crate::file_lifecycle::cleanup_pending_uploads(&state.store, &state.file_storage, None, 1)
+        .await?;
     let file_id = Uuid::now_v7();
     let object_key = format!("{user_id}-{file_id}");
     let metadata = state
@@ -151,15 +154,30 @@ pub async fn upload_file(
             state.max_total_file_storage_bytes,
         )
         .await?;
-    if let Err(error) = state
-        .file_storage
-        .put(&object_key, upload.bytes.clone())
+    // A failed/timed-out PUT is uncertain: keep its durable reservation until
+    // grace-period cleanup confirms deletion, rather than releasing quota now.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        state.file_storage.put(&object_key, upload.bytes),
+    )
+    .await
+    .map_err(storage_error)?
+    .map_err(storage_error)?;
+    if !state.store.finish_file_upload(user_id, metadata.id).await? {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            state.file_storage.delete(&object_key),
+        )
         .await
-    {
-        if let Err(cleanup_error) = state.store.delete_file_metadata(user_id, metadata.id).await {
-            tracing::error!(error = ?cleanup_error, object_key, "failed to release rejected upload quota");
+        .map_err(storage_error)?
+        .map_err(storage_error)?;
+        match state.store.delete_file_metadata(user_id, metadata.id).await {
+            Ok(_) | Err(AppError::NotFound(_)) => {}
+            Err(error) => return Err(error),
         }
-        return Err(storage_error(error));
+        return Err(AppError::Conflict(
+            "Upload was not published because account erasure or cleanup started.".into(),
+        ));
     }
     Ok((StatusCode::CREATED, Json(metadata)))
 }
@@ -297,8 +315,9 @@ fn invalid_multipart(error: axum::extract::multipart::MultipartError) -> AppErro
     }
 }
 
-fn storage_error(error: impl std::fmt::Debug) -> AppError {
-    tracing::error!(error = ?error, "file storage operation failed");
+fn storage_error(_error: impl std::fmt::Debug) -> AppError {
+    // Provider bodies/URLs can contain private identifiers or signed credentials.
+    tracing::error!("file storage operation failed");
     AppError::InvalidRequest {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         message: "file storage operation failed".to_owned(),

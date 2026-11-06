@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 use prosepect_api::{
-    config::Config, google_auth::GoogleOAuth, store::Store, sync_service::SyncService,
+    config::Config, file_storage::FileStorage, google_auth::GoogleOAuth, store::Store,
+    sync_service::SyncService,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -35,9 +36,15 @@ async fn main() -> anyhow::Result<()> {
             tokio::time::sleep(Duration::from_secs(300)).await;
         }
     };
-    let service = SyncService::new(store, google, config.google_calendar_webhook_url.clone())?;
+    let service = SyncService::new(
+        store.clone(),
+        google,
+        config.google_calendar_webhook_url.clone(),
+    )?;
+    let storage = FileStorage::new(&config.object_storage)?;
 
     loop {
+        prosepect_api::file_lifecycle::cleanup_pending_uploads(&store, &storage, None, 1).await?;
         service.enqueue_periodic_work().await?;
         let processed = service.run_once().await?;
         if once {
