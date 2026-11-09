@@ -111,6 +111,7 @@ test('opens a scheduled task directly from an empty calendar slot', async ({ pag
 
 test('navigates and opens actions without a mouse', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Make today count.', exact: true })).toBeVisible()
 
   await page.keyboard.press('g')
   await page.keyboard.press('c')
@@ -442,6 +443,9 @@ test('creates and edits a standalone task with an automatic deadline', async ({ 
 
   try {
     await page.goto('/')
+    await expect(
+      page.getByRole('heading', { name: 'Make today count.', exact: true }),
+    ).toBeVisible()
     await page.keyboard.press('n')
     const dialog = page.getByRole('dialog', { name: 'New task' })
     await expect(dialog).toBeVisible()
@@ -495,6 +499,9 @@ test('manages descriptions, labels, reminders, and subtasks', async ({ page }) =
 
   try {
     await page.goto('/')
+    await expect(
+      page.getByRole('heading', { name: 'Make today count.', exact: true }),
+    ).toBeVisible()
     await page.keyboard.press('n')
     const dialog = page.getByRole('dialog', { name: 'New task' })
     await dialog.getByLabel('Task title').fill(taskName)
@@ -536,6 +543,9 @@ test('creates the next recurring task when an occurrence is completed', async ({
 
   try {
     await page.goto('/')
+    await expect(
+      page.getByRole('heading', { name: 'Make today count.', exact: true }),
+    ).toBeVisible()
     await page.keyboard.press('n')
     const dialog = page.getByRole('dialog', { name: 'New task' })
     await dialog.getByLabel('Task title').fill(taskName)
