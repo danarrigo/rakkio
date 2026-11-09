@@ -85,7 +85,7 @@ jobs:
           docker compose run --rm --no-deps --entrypoint caddy web validate --config /etc/caddy/Caddyfile
           trap 'docker compose down --remove-orphans' EXIT
           docker compose up -d --no-deps web
-          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 --max-time 60 http://127.0.0.1:8080/ > /tmp/public-home.html
+          curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 1 --max-time 60 http://127.0.0.1:8080/ > /tmp/public-home.html
           python3 - <<'PY'
           import urllib.request, urllib.error
           class NoRedirect(urllib.request.HTTPRedirectHandler):
