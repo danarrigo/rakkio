@@ -5,6 +5,7 @@ export default defineConfig(config, {
   testIgnore: [],
   testMatch: [
     'security-headers.spec.ts',
+    'indexing.spec.ts',
     'notes-files-settings-ui-audit.spec.ts',
     'calendar-ui-audit.spec.ts',
     'operations.spec.ts',

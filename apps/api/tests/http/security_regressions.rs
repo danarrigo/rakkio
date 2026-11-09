@@ -466,11 +466,18 @@ async fn csv_export_neutralizes_untrusted_spreadsheet_cells(pool: PgPool) -> any
 #[sqlx::test(migrations = "../../migrations")]
 async fn api_responses_apply_security_headers(pool: PgPool) -> anyhow::Result<()> {
     let router = app::build(&test_config(), Store::from_pool(pool))?;
-    for path in ["/health", "/api/v1/session", "/unknown"] {
+    for path in ["/", "/health", "/api/v1/session", "/unknown"] {
         let response = router
             .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty())?)
             .await?;
+        assert_eq!(
+            response
+                .headers()
+                .get("x-robots-tag")
+                .and_then(|v| v.to_str().ok()),
+            Some("noindex, nofollow")
+        );
         assert_eq!(
             response
                 .headers()
