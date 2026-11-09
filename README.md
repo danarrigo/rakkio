@@ -1,121 +1,194 @@
-# rakkio
+<p align="center">
+  <img src="apps/web/public/favicon.svg" alt="" width="64" height="64">
+</p>
 
-rakkio is an open-source, self-hostable personal productivity workspace that combines daily planning, tasks, outcome-oriented projects, notes, calendars, files, and priorities in one calm command center.
+<h1 align="center">rakkio</h1>
 
-The application is designed both as a useful personal system and as a production-oriented reference project. PostgreSQL owns product and operational state, Google Calendar synchronization is conflict-aware and retryable, and files use local or S3-compatible object storage.
+<p align="center">
+  <strong>A calmer place to plan your day.</strong><br>
+  Tasks, projects, notes, calendars, and files in one open-source workspace.
+</p>
+
+<p align="center">
+  <a href="https://rakkio.com">Open the app</a> ·
+  <a href="#getting-started">Get started</a> ·
+  <a href="docs/PERSONAL-SELF-HOSTING.md">Self-host</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/danarrigo/rakkio/actions/workflows/ci.yml"><img src="https://github.com/danarrigo/rakkio/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
+  <a href="https://github.com/danarrigo/rakkio/actions/workflows/security.yml"><img src="https://github.com/danarrigo/rakkio/actions/workflows/security.yml/badge.svg?branch=main" alt="Dependency security status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-475569" alt="License: AGPL-3.0"></a>
+</p>
+
+---
+
+rakkio brings daily planning and longer-term work together. Capture an idea in your inbox, turn it into a task or project, and decide what deserves your attention today. Keep supporting notes and attachments alongside the work instead of scattered across apps.
+
+Use the [hosted beta](https://rakkio.com), or run your own installation. Hosted registration is capacity-limited; self-hosted installations use their own Google OAuth credentials and storage.
 
 ## Features
 
-- Google OpenID Connect login with encrypted credentials, secure cookie sessions, CSRF protection, capped public-beta hosted access, and authentication rate limits
-- Today view with events, due and scheduled tasks, up to three focus tasks, automatic or manual daily review, and carry-forward decisions
-- Standalone and project tasks with subtasks, labels, reminders, recurrence, sparse manual ordering, quick capture, and optimistic concurrency
-- Outcome-oriented projects with progress, target dates, lifecycle states, archival, notes, tasks, and files
-- Native and selected Google calendars with day, week, month, and agenda views
-- Near-real-time Google Calendar synchronization, renewable webhook channels, durable recovery jobs, and scheduled-task time blocks
-- Event recurrence, attendees, locations, timezones, editing, deletion, drag rescheduling, and conflict policies
-- Safe Markdown notes with project, task, or event links and private attachments
-- Tenant-scoped global search across tasks, projects, notes, and events
-- Authorized file upload and download using local storage, MinIO, Cloudflare R2, or another S3-compatible service
-- Portable JSON, CSV, Markdown, and ICS exports plus complete account and integration deletion
-- Responsive keyboard-accessible UI with system-aware and manual light or dark themes
-- Optional private Discord `/add`, `/today`, and version-bound `/done` commands linked to the same workspace
+|                           | What you can do                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Plan your day**         | See events, due tasks, and scheduled work together. Pick up to three focus tasks, review your day, and carry work forward deliberately.                       |
+| **Capture and organize**  | Use an inbox, quick capture, saved task views, subtasks, labels, reminders, dependencies, recurring tasks, bulk actions, and deletion Undo.                   |
+| **Move projects forward** | Track outcomes, progress, target dates, and lifecycle states with related tasks, notes, and files.                                                            |
+| **Make time for work**    | Switch between day, week, month, and agenda views. Manage native events and selected Google calendars. Task deadlines and reserved work blocks stay distinct. |
+| **Keep context close**    | Write safe Markdown notes, attach private files, and search across tasks, projects, notes, and events.                                                        |
+| **Connect selectively**   | Opt into Google Calendar and Google Tasks synchronization. Link Discord for private `/add`, `/today`, and version-bound `/done` commands.                     |
+| **Stay in control**       | Export JSON, CSV, Markdown, or ICS; manage integrations and account deletion; choose local or S3-compatible file storage.                                     |
 
-Hosted app: <https://rakkio.com>. Source: <https://github.com/danarrigo/rakkio>.
+The responsive interface supports keyboard navigation, a command palette, and light, dark, or system themes. Google sign-in uses secure cookie sessions, CSRF protection, rate limits, and encrypted stored Google credentials.
 
-See [PRD.md](PRD.md) for the product contract. The public name is rakkio; legacy Rust crate, cookie, database, provider-provenance and deployment-resource identifiers are deliberately retained for compatibility. Existing data and Google mappings are not renamed or recreated.
+**Optional Groups:** handles, invitations, membership, and shared assignments with independent member progress are available behind `GROUPS_ENABLED` (disabled by default). Group events and shared-agenda integration are still in development. See [Groups](docs/GROUPS.md) for availability and privacy boundaries.
 
-## Architecture
+## Getting started
 
-- **API:** Rust, Axum, Tokio, SQLx, REST, and OpenAPI
-- **Frontend:** Vue 3, TypeScript, Vite, Tailwind CSS, Pinia, and Reka UI
-- **Data:** PostgreSQL for canonical product state, jobs, conflicts, and activity
-- **Files:** local filesystem in development or S3-compatible object storage
-- **Background work:** portable long-running or one-shot worker, plus an authenticated API trigger for hosted cron
-- **Hosted deployment:** Vercel SPA and optional fast Discord acknowledgement function, Render Free API, GitHub Actions synchronization trigger, Neon PostgreSQL, and Cloudflare R2
-- **Personal self-hosting:** Docker Compose with PostgreSQL, private persistent files, API, worker, and one HTTPS web hostname
+| Your goal                         | Start here                                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Use rakkio**                    | Open [rakkio.com](https://rakkio.com).                                                                                                                      |
+| **Run a private personal server** | Follow [Personal self-hosting](docs/PERSONAL-SELF-HOSTING.md): one owner, one Linux server, one HTTPS hostname, Google login, and persistent private files. |
+| **Develop locally**               | Follow the local setup below, or expand the development Compose instructions.                                                                               |
+| **Operate a hosted deployment**   | Read [Operations and deployment](docs/OPERATIONS.md) for configuration, workers, storage, and recovery.                                                     |
 
-## Repository layout
+### Local development
 
-```text
-apps/api/          Axum API, synchronization service, and worker entrypoints
-apps/web/          Vue single-page application and Playwright tests
-render.yaml        Render Free API Blueprint
-migrations/        PostgreSQL migrations
-scripts/           Guided deployment setup
-openapi/           Generated OpenAPI contract
-PRD.md             Authoritative product requirements
-```
+**Prerequisites:** Rust 1.94+, Node.js 22.22.2+, and PostgreSQL 16+.
 
-## Private personal server (HTTPS)
-
-For **one person on one Linux VPS**, with one HTTPS hostname, Google login and a private persistent files volume, use [Personal self-hosting](docs/PERSONAL-SELF-HOSTING.md) for phone access, backups, isolated restore and upgrades. It uses a separate production Compose package; the development defaults below are not safe for public exposure.
-
-## Run with Docker Compose (development)
-
-Prerequisites: Docker with Compose support.
+Install the frontend dependencies:
 
 ```bash
-docker compose up --build
+npm ci
 ```
 
-Open:
+Create a local PostgreSQL database, then configure the API's process environment using [.env.example](.env.example) as a reference. The API reads environment variables; Cargo does not automatically load a `.env` file.
 
-- Application: <http://localhost:8080>
-- OpenAPI documentation: <http://localhost:8080/docs/>
-
-Compose binds the web service and development MinIO endpoint to `127.0.0.1`, bootstraps PostgreSQL and a private object bucket, and starts the portable worker. Signed attachment URLs use `S3_PUBLIC_ENDPOINT`, which defaults to `http://localhost:9000` for Compose. The default development login is intentionally insecure and cannot be enabled with `APP_ENV=production`. The existing development MinIO/mc image tags have returned registry authorization errors and their upstream repositories are archived; that development dependency issue is not changed by the personal package, which does not use MinIO.
-
-To exercise real Google login and Calendar synchronization, copy `.env.example`, configure the four Google credential variables, and use the callback URL shown there. Each self-hosted installation supplies its own Google OAuth client.
-
-## Run locally
-
-Prerequisites:
-
-- Rust 1.94 or newer
-- Node.js 22.22.2 or newer
-- PostgreSQL 16 or newer
+**Terminal 1: API**
 
 ```bash
-cp .env.example .env
-npm install
-
+# Example local credentials only. Adjust for your PostgreSQL installation.
+export DATABASE_URL='postgres://postgres:postgres@localhost:5432/prosepect'
 cargo run -p prosepect-api --bin prosepect-api
+```
+
+**Terminal 2: frontend**
+
+```bash
 npm run dev:web
 ```
 
-Run the background worker in another terminal when Google synchronization is configured:
+Open the app at **<http://localhost:5173>** and Swagger UI at **<http://localhost:3000/docs/>**.
+
+When Google synchronization is configured, start the worker in another terminal with the same API environment:
 
 ```bash
 cargo run -p prosepect-api --bin worker
 ```
 
-Use `--once` to claim at most one synchronization job for diagnostics.
+Add `--once` to claim at most one synchronization job for diagnostics.
 
-The frontend runs at <http://localhost:5173>. Swagger UI runs at <http://localhost:3000/docs/>.
+> [!WARNING]
+> Development authentication is intentionally insecure. Keep development services private; it cannot be enabled with `APP_ENV=production`. Use the separate [personal-server package](docs/PERSONAL-SELF-HOSTING.md) for a public HTTPS installation.
 
-## Google setup
+<details>
+<summary><strong>Alternative: Docker Compose for development</strong></summary>
 
-1. Create a Google OAuth web client.
-2. Add `GOOGLE_REDIRECT_URI` as an authorized redirect URI.
-3. Generate `TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32`.
-4. Configure the consent screen for OpenID scopes. Calendar scopes are requested later, only when a signed-in user connects Google Calendar.
-5. In production, set `GOOGLE_CALENDAR_WEBHOOK_URL` to a public HTTPS endpoint ending in `/webhooks/google/calendar`. Omit it locally when no public HTTPS callback is available.
-6. Restart the API and worker.
+With Docker and Compose installed, run:
 
-Production requires Google configuration, secure cookies, and development authentication disabled. S3-compatible storage remains the default production requirement for hosted deployments; the personal-server package explicitly opts into local storage with `FILE_STORAGE_BACKEND=local` and an absolute persistent `FILE_STORAGE_PATH`. Set `INVITE_ONLY=true` for private access and insert lowercase emails into `account_invites` before first sign-in. For open registration, set a hard `MAX_USER_ACCOUNTS` capacity; existing accounts can still sign in after capacity is reached. `MAX_USER_FILE_STORAGE_BYTES` limits each account independently, while `MAX_TOTAL_FILE_STORAGE_BYTES` remains the deployment-wide ceiling. Hosted deployments should set a random `WORKER_TRIGGER_TOKEN`; the scheduled GitHub workflow renews watches and recovers missed synchronization without compiling Rust on every run.
+```bash
+docker compose up --build
+```
 
-## Optional Discord setup
+- Application: <http://localhost:8080>
+- OpenAPI documentation: <http://localhost:8080/docs/>
 
-See [Discord integration](docs/DISCORD-INTEGRATION.md) for the hosted/shared-app model, separate self-hosted credentials, explicit account linking, private commands, and operator setup. Disabled by default. No bot token, Gateway connection, chat-history permission, or separate database is required. A sleeping API needs the supplied fast relay; always-on self-hosters can use the API endpoint directly. Actual Discord installation and provider acceptance must be checked separately from automated tests.
+Compose starts PostgreSQL, a private object bucket, the API, frontend, and worker. The web service and development MinIO endpoint bind to `127.0.0.1`. Signed attachment URLs use `S3_PUBLIC_ENDPOINT`, defaulting to `http://localhost:9000`.
+
+**Known caveat:** the development MinIO/mc image tags have returned registry authorization errors, and their upstream repositories are archived. The personal-server package does not use MinIO; its lifecycle tests do not establish that the development MinIO images are available.
+
+</details>
+
+### Connect Google and Discord
+
+Basic Google login uses OpenID scopes. Calendar and Tasks access are separate, optional connections rather than automatic permissions at signup.
+
+<details>
+<summary><strong>Google OAuth configuration</strong></summary>
+
+1. Create a Google OAuth web client and configure the consent screen for OpenID scopes.
+2. Add `GOOGLE_REDIRECT_URI` as an authorized redirect URI, matching your installation exactly.
+3. Generate `TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32` and configure all four Google variables listed together in [.env.example](.env.example).
+4. Configure Calendar access when needed. In production, set `GOOGLE_CALENDAR_WEBHOOK_URL` to a public HTTPS endpoint ending in `/webhooks/google/calendar`; omit it locally without a public callback.
+5. Follow [Google Tasks synchronization](docs/GOOGLE-TASKS-SYNC.md) for its API setup and separate consent.
+6. Restart the API and worker with the updated environment.
+
+Production requires Google configuration, secure cookies, and development authentication disabled. Each self-hosted installation supplies its own OAuth client. Publishing an OAuth application is not the same as Google verification; see [Google sign-in verification](docs/GOOGLE-SIGN-IN-VERIFICATION.md).
+
+</details>
+
+For Discord, follow [Discord integration](docs/DISCORD-INTEGRATION.md). It is disabled by default and requires explicit account linking. No bot token, Gateway connection, chat-history permission, or separate database is required. The supplied fast relay handles acknowledgement for a sleeping API; always-on installations can use the API endpoint directly. Actual provider setup and acceptance must be verified separately from automated tests.
 
 ## Keyboard shortcuts
 
-- `N` opens global task capture outside editable controls.
-- `Ctrl+Enter` or `Cmd+Enter` creates the task.
-- `Escape` closes dialogs.
-- Task ordering includes pointer and keyboard-accessible controls.
+| Shortcut                                    | Action                                                       |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| `N`                                         | Open task capture                                            |
+| `E`                                         | Create an event                                              |
+| `/`                                         | Search the workspace                                         |
+| `Ctrl+K` / `Cmd+K`                          | Open the command palette                                     |
+| `G`, then `I` / `T` / `P` / `C` / `N` / `S` | Go to Inbox / Today / Projects / Calendar / Notes / Settings |
+| `Ctrl+Enter` / `Cmd+Enter`                  | Create the task                                              |
+| `?`                                         | Show shortcut help                                           |
+| `Escape`                                    | Close dialogs                                                |
 
-## Quality checks
+Single-key shortcuts apply outside editable controls. Task ordering also has pointer and keyboard-accessible controls.
+
+## Under the hood
+
+| Layer               | Technology                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **API**             | Rust, Axum, Tokio, SQLx, REST, and OpenAPI                                                                                              |
+| **Frontend**        | Vue 3, TypeScript, Vite, Tailwind CSS, Pinia, and Reka UI                                                                               |
+| **Canonical state** | PostgreSQL for product data, jobs, conflicts, and activity                                                                              |
+| **Files**           | Local filesystem or S3-compatible storage, including R2 and MinIO                                                                       |
+| **Background work** | Portable long-running or one-shot worker, plus an authenticated API trigger for hosted scheduling                                       |
+| **Hosted app**      | Vercel frontend and optional Discord relay, Render Free API, GitHub Actions synchronization trigger, Neon PostgreSQL, and Cloudflare R2 |
+| **Personal server** | Docker Compose, PostgreSQL, persistent private files, API, worker, and HTTPS web entrypoint                                             |
+
+```text
+apps/api/          API, synchronization service, and worker entrypoints
+apps/web/          Vue application, prerendered public pages, and browser tests
+deploy/personal/   Private production self-hosting package
+migrations/        PostgreSQL migrations
+openapi/           Generated OpenAPI contract
+scripts/           Deployment, worker, and operational helpers
+docs/              Feature guides and operator documentation
+PRD.md             Authoritative product requirements
+CONTEXT.md         Shared product terminology
+```
+
+**Compatibility note:** the public name is rakkio. Legacy Rust crate, cookie, database, provider-provenance, and deployment-resource identifiers are deliberately retained. Existing data and Google mappings are not renamed or recreated.
+
+## Documentation
+
+| Guide                                                  | Covers                                                                       |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [Personal self-hosting](docs/PERSONAL-SELF-HOSTING.md) | Private HTTPS setup, backups, isolated restore, and upgrades                 |
+| [Operations](docs/OPERATIONS.md)                       | Deployment, configuration, quotas, workers, observability, and recovery      |
+| [Google Tasks](docs/GOOGLE-TASKS-SYNC.md)              | Separate consent, list selection, synchronization, and conflicts             |
+| [Discord](docs/DISCORD-INTEGRATION.md)                 | Account linking, private commands, hosted relay, and self-hosted credentials |
+| [Groups](docs/GROUPS.md)                               | Feature gating, membership, assignments, and privacy                         |
+| [Saved task views](docs/SAVED-TASK-VIEWS.md)           | Reusable task filters                                                        |
+| [Bulk actions](docs/BULK-TASK-ACTIONS.md)              | Multi-task changes and safeguards                                            |
+| [Recurring edits](docs/RECURRING-TASK-EDITS.md)        | Occurrence and forward-edit behavior                                         |
+| [Search indexing](docs/SEARCH-INDEXING.md)             | Public canonical pages, crawl files, and private-page exclusions             |
+| [Security policy](SECURITY.md)                         | Reporting vulnerabilities and security checks                                |
+| [Product contract](PRD.md)                             | Requirements and intended behavior                                           |
+
+<details>
+<summary><strong>Contributor checks and API generation</strong></summary>
 
 ```bash
 cargo fmt --all -- --check
@@ -128,25 +201,20 @@ npm run lint:web
 npm run test:web
 npm run build:web
 npm run test:e2e
-npm run generate:api
 ```
 
-PostgreSQL integration tests create isolated databases and require a superuser-compatible test database URL.
+PostgreSQL integration tests create isolated databases and require a superuser-compatible test database URL. Use a disposable test instance, never a production database. Browser tests that exercise the backend also require the API to be running.
 
-## API contract
-
-Regenerate the OpenAPI document and frontend types after changing schemas or routes:
+After changing API schemas or routes, generate the contract from the actual Rust exporter and regenerate frontend types:
 
 ```bash
 npm run generate:api
 ```
 
-Commit both `openapi/openapi.json` and `apps/web/src/api/schema.d.ts`.
+Commit both `openapi/openapi.json` and `apps/web/src/api/schema.d.ts`. Do not hand-edit generated contracts.
 
-## Operations and deployment
-
-Production configuration, backups, worker behavior, observability, recovery, and Vercel/Render deployment are documented in [docs/OPERATIONS.md](docs/OPERATIONS.md). Run `scripts/deploy-render.sh` for the guided hosted setup.
+</details>
 
 ## License
 
-rakkio is licensed under the [GNU Affero General Public License v3.0](LICENSE). Network users must be offered the corresponding source for modified deployed versions. The license does not prohibit third-party paid hosting.
+[GNU Affero General Public License v3.0](LICENSE). Network users must be offered the corresponding source for modified deployed versions. The license does not prohibit third-party paid hosting.
