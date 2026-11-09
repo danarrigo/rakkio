@@ -101,7 +101,30 @@ grep -iq '^Strict-Transport-Security: max-age=31536000' "$work/headers"
 grep -iq '^X-Content-Type-Options: nosniff' "$work/headers"
 status 200 https://app.prosepect.test/health
 status 200 https://app.prosepect.test/api-doc/openapi.json
+status 200 https://app.prosepect.test/
+grep -q 'Plan what matters without scattering your attention.' "$work/body"
+grep -q 'rel="canonical" href="https://rakkio.com/"' "$work/body"
+for path in privacy terms delete-account; do
+  status 200 "https://app.prosepect.test/$path"
+  grep -q "rel=\"canonical\" href=\"https://rakkio.com/$path\"" "$work/body"
+done
+status 200 https://app.prosepect.test/robots.txt
+grep -iq '^Content-Type: text/plain' "$work/headers"
+grep -q 'Sitemap: https://rakkio.com/sitemap.xml' "$work/body"
+status 200 https://app.prosepect.test/sitemap.xml
+grep -q '<urlset' "$work/body"
+for path in home home/; do
+  status 308 "https://app.prosepect.test/$path"
+  grep -iq '^Location: /' "$work/headers"
+done
+status 308 https://app.prosepect.test/delete-account.html
+grep -iq '^Location: /delete-account' "$work/headers"
+status 404 https://app.prosepect.test/blog.html
+grep -q 'Page not found' "$work/body"
+grep -iq '^X-Robots-Tag: noindex, nofollow' "$work/headers"
 status 200 https://app.prosepect.test/settings
+grep -iq '^X-Robots-Tag: noindex, nofollow' "$work/headers"
+! grep -q 'rel="canonical"' "$work/body"
 grep -iq "^Content-Security-Policy: .*script-src 'self'.*frame-ancestors 'none'" "$work/headers"
 grep -iq '^X-Frame-Options: DENY' "$work/headers"
 grep -iq '^X-Content-Type-Options: nosniff' "$work/headers"
@@ -129,7 +152,7 @@ status 200 --config "$work/other.curl" https://app.prosepect.test/api/v1/session
 status 404 --config "$work/other.curl" "https://app.prosepect.test/api/v1/files/$file_id/download"
 printf "SELECT object_key FROM files WHERE id='%s';" "$file_id" | sql > "$work/object-key"
 # No public static route may serve private volume bytes, even by known object key.
-status 200 "https://app.prosepect.test/data/files/$(cat "$work/object-key")"
+status 404 "https://app.prosepect.test/data/files/$(cat "$work/object-key")"
 ! cmp -s "$work/payload.bin" "$work/body"
 # Delete the direct DB-only second tenant fixture; normal registration still has cap=1.
 printf "DELETE FROM users WHERE id='00000000-0000-4000-8000-000000000003';" | sql

@@ -17,6 +17,7 @@ test('public pages have unique canonical URLs and useful HTML without JavaScript
     for (const [path, heading] of publicPages) {
       const response = await page.goto(path)
       expect(response!.status()).toBe(200)
+      expect(response!.headers()['x-robots-tag'] ?? '').not.toContain('noindex')
       await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
       await expect(page.locator('link[rel="canonical"]')).toHaveCount(1)
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
@@ -60,7 +61,7 @@ test('legacy aliases redirect permanently without turning missing pages into hom
     expect(response.status()).toBe(308)
     expect(response.headers().location).toBe(to)
   }
-  for (const path of ['/blog.html', '/missing-indexing-check', '/app.html']) {
+  for (const path of ['/blog.html', '/missing-indexing-check']) {
     const response = await request.get(path, { maxRedirects: 0 })
     expect(response.status()).toBe(404)
     expect(await response.text()).toContain('Page not found')
@@ -70,6 +71,7 @@ test('legacy aliases redirect permanently without turning missing pages into hom
 
 test('private deep links remain available but cannot be indexed', async ({ request }) => {
   for (const path of [
+    '/app.html', // Internal non-indexable client entry, never a sitemap page.
     '/inbox',
     '/calendar',
     '/projects',
@@ -87,6 +89,62 @@ test('private deep links remain available but cannot be indexed', async ({ reque
     expect(await response.text()).toContain('name="robots" content="noindex, nofollow"')
     expect(await response.text()).not.toContain('rel="canonical"')
     expect(await response.text()).not.toContain('synthetic-test-only')
+  }
+})
+
+test('homepage stays visible after JavaScript starts while session discovery is slow', async ({
+  page,
+}) => {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/v1/**', async (route) => {
+    await gate
+    await route.fulfill({
+      status: 401,
+      json: { error: { code: 'authentication_required', message: 'authentication is required' } },
+    })
+  })
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('#app[data-v-app]')).toBeVisible()
+    await expect(
+      page.getByRole('heading', {
+        name: 'Plan what matters without scattering your attention.',
+        exact: true,
+      }),
+    ).toBeVisible()
+  } finally {
+    release()
+    await page.unrouteAll({ behavior: 'wait' })
+  }
+})
+
+test('public deletion and not-found layouts stay contained on narrow and wide screens', async ({
+  page,
+  isMobile,
+}, testInfo) => {
+  await page.setViewportSize({ width: isMobile ? 320 : 1280, height: 900 })
+  await page.emulateMedia({ colorScheme: isMobile ? 'dark' : 'light' })
+  await page.route('**/api/v1/**', (route) =>
+    route.fulfill({
+      status: 401,
+      json: { error: { code: 'authentication_required', message: 'authentication is required' } },
+    }),
+  )
+  for (const path of ['/delete-account', '/missing-indexing-check']) {
+    await page.goto(path)
+    await expect(page.locator('#app[data-v-app]')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    if (path === '/delete-account' && isMobile) {
+      await expect(page.locator('strong')).toHaveCSS('color', 'rgb(241, 245, 249)')
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({
+      path: testInfo.outputPath(path === '/delete-account' ? 'deletion.png' : 'not-found.png'),
+      fullPage: true,
+    })
   }
 })
 

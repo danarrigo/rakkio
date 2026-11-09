@@ -44,6 +44,15 @@ jobs:
           toolchain: stable
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      # Temporary remote-only resolution; remove once the generated lock is adopted.
+      - name: Resolve patched SQLite dependency
+        run: cargo update -p sqlx && cargo update -p libsqlite3-sys --precise 0.39.1
+      - name: Preserve resolved lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: resolved-cargo-lock
+          path: Cargo.lock
+          retention-days: 3
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --no-fail-fast
@@ -80,6 +89,42 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: docker compose config --quiet
       - run: docker compose build
+      - name: Static Caddy indexing responses (disposable runner only)
+        run: |
+          docker compose run --rm --no-deps --entrypoint caddy web validate --config /etc/caddy/Caddyfile
+          trap 'docker compose down --remove-orphans' EXIT
+          docker compose up -d --no-deps web
+          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 --max-time 60 http://127.0.0.1:8080/ > /tmp/public-home.html
+          python3 - <<'PY'
+          import urllib.request, urllib.error
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args): return None
+          client=urllib.request.build_opener(NoRedirect)
+          def check(path, status):
+              try: response=client.open('http://127.0.0.1:8080'+path, timeout=10)
+              except urllib.error.HTTPError as error: response=error
+              assert response.code==status, (path,response.code,status)
+              return response.headers,response.read().decode()
+          for path in ['/', '/privacy', '/terms', '/delete-account']:
+              headers,body=check(path,200)
+              assert 'rel="canonical" href="https://rakkio.com'+path+'"' in body
+              assert '<h1' in body
+          for path in ['/settings', '/groups/00000000-0000-0000-0000-000000000001/assignments']:
+              headers,body=check(path,200)
+              assert headers['X-Robots-Tag']=='noindex, nofollow'
+              assert 'rel="canonical"' not in body
+          for path in ['/home','/home/','/delete-account.html']:
+              check(path,308)
+          for path in ['/blog.html','/missing-page']:
+              headers,body=check(path,404)
+              assert 'Page not found' in body
+              assert headers['X-Robots-Tag']=='noindex, nofollow'
+          headers,body=check('/robots.txt',200)
+          assert 'text/plain' in headers['Content-Type'] and 'Sitemap:' in body
+          headers,body=check('/sitemap.xml',200)
+          assert '<urlset' in body and 'xml' in headers['Content-Type']
+          print('Native Caddy HTTP indexing contract passed.')
+          PY
 
   personal-self-hosting:
     # Backend includes the actual lock-backed one-account registration cap test.

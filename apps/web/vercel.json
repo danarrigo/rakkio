@@ -16,12 +16,39 @@
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
+    },
+    {
+      "source": "/((?:inbox|calendar|projects|notes|operations|files|groups|join|settings|app\\.html)/?)",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
+    {
+      "source": "/groups/:groupId/assignments",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
+    },
+    {
+      "source": "/api/:path*",
+      "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ],
+  "redirects": [
+    { "source": "/home", "destination": "/", "permanent": true },
+    { "source": "/home/", "destination": "/", "permanent": true },
+    { "source": "/index.html", "destination": "/", "permanent": true },
+    { "source": "/privacy/", "destination": "/privacy", "permanent": true },
+    { "source": "/privacy.html", "destination": "/privacy", "permanent": true },
+    { "source": "/terms/", "destination": "/terms", "permanent": true },
+    { "source": "/terms.html", "destination": "/terms", "permanent": true },
+    { "source": "/delete-account/", "destination": "/delete-account", "permanent": true },
+    { "source": "/delete-account.html", "destination": "/delete-account", "permanent": true }
+  ],
   "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/delete-account", "destination": "/delete-account.html" },
     {
-      "source": "/((?!api/|assets/|favicon\\.(?:svg|png|ico)$).*)",
-      "destination": "/index.html"
-    }
+      "source": "/((?:inbox|calendar|projects|notes|operations|files|groups|join|settings)/?)",
+      "destination": "/app.html"
+    },
+    { "source": "/groups/:groupId/assignments", "destination": "/app.html" }
   ]
 }

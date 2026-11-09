@@ -14,7 +14,7 @@ withDefaults(
 </script>
 
 <template>
-  <div class="min-h-dvh bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-50">
+  <div class="flex min-h-dvh flex-col bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-50">
     <header class="border-b border-slate-200 dark:border-slate-800">
       <div class="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
         <RouterLink
@@ -34,7 +34,7 @@ withDefaults(
       </div>
     </header>
 
-    <main id="public-document" class="mx-auto max-w-3xl px-5 py-14 sm:px-8 sm:py-20">
+    <main id="public-document" class="mx-auto w-full max-w-3xl flex-1 px-5 py-14 sm:px-8 sm:py-20">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ eyebrow }}</p>
       <h1 class="mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">{{ title }}</h1>
       <p class="mt-4 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
@@ -52,6 +52,9 @@ withDefaults(
         class="mx-auto flex max-w-5xl flex-col gap-3 px-5 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"
       >
         <span>rakkio is independently operated by Daniel in Indonesia.</span>
+        <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/delete-account">
+          Delete account
+        </RouterLink>
         <a
           class="hover:text-slate-950 dark:hover:text-white"
           href="mailto:daniel.manurung.dev@gmail.com"
@@ -87,8 +90,8 @@ withDefaults(
   line-height: 1.75;
 }
 
-:global(.dark) .public-document :deep(p),
-:global(.dark) .public-document :deep(li) {
+.dark .public-document :deep(p),
+.dark .public-document :deep(li) {
   color: rgb(148 163 184);
 }
 
@@ -96,7 +99,9 @@ withDefaults(
 .public-document :deep(h3 + p),
 .public-document :deep(p + p),
 .public-document :deep(p + ul),
-.public-document :deep(p + ol) {
+.public-document :deep(p + ol),
+.public-document :deep(ol + p),
+.public-document :deep(ul + p) {
   margin-top: 0.75rem;
 }
 
@@ -129,7 +134,7 @@ withDefaults(
   font-weight: 600;
 }
 
-:global(.dark) .public-document :deep(strong) {
+.dark .public-document :deep(strong) {
   color: rgb(241 245 249);
 }
 </style>

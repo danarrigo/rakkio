@@ -173,6 +173,9 @@ function signIn() {
         class="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"
       >
         <span>Independently operated by Daniel in Indonesia.</span>
+        <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/delete-account">
+          Delete account
+        </RouterLink>
         <a
           class="hover:text-slate-950 dark:hover:text-white"
           href="mailto:daniel.manurung.dev@gmail.com"
