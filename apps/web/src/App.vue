@@ -181,6 +181,7 @@ function runKeyboardAction(action: GlobalKeyboardAction) {
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (
     publicRoute.value ||
+    !store.user ||
     store.authenticationRequired ||
     paletteMode.value ||
     document.querySelector('[role="dialog"]')

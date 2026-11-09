@@ -19,6 +19,7 @@ test('public pages have unique canonical URLs and useful HTML without JavaScript
       expect(response!.status()).toBe(200)
       expect(response!.headers()['x-robots-tag'] ?? '').not.toContain('noindex')
       await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
+      if (path === '/') await expect(page.getByRole('checkbox')).toBeDisabled()
       await expect(page.locator('link[rel="canonical"]')).toHaveCount(1)
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
         'href',
@@ -116,8 +117,9 @@ test('homepage stays visible after JavaScript starts while session discovery is 
       }),
     ).toBeVisible()
   } finally {
+    const fallback = page.waitForResponse('**/api/v1/development/session')
     release()
-    await page.unrouteAll({ behavior: 'wait' })
+    await fallback
   }
 })
 
