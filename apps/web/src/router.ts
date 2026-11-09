@@ -1,8 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { LEGACY_REDIRECTS } from './site-pages'
+import { updatePageMetadata } from './page-metadata'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    ...Object.entries(LEGACY_REDIRECTS)
+      .filter(([path]) => !path.endsWith('/'))
+      .map(([path, redirect]) => ({ path, redirect })),
     { path: '/', name: 'today', component: () => import('./views/TodayView.vue') },
     {
       path: '/inbox',
@@ -63,10 +68,21 @@ export const router = createRouter({
       component: () => import('./views/TermsView.vue'),
       meta: { public: true, title: 'Terms of Service' },
     },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    {
+      path: '/delete-account',
+      name: 'delete-account',
+      component: () => import('./views/DeleteAccountView.vue'),
+      meta: { public: true, title: 'Delete your account' },
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      component: () => import('./views/NotFoundView.vue'),
+      meta: { public: true, title: 'Page not found' },
+    },
   ],
 })
 
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${String(to.meta.title)} | rakkio` : 'rakkio'
+  updatePageMetadata(to.path, to.meta.title ? `${String(to.meta.title)} | rakkio` : 'rakkio')
 })

@@ -21,6 +21,8 @@ There are no accepted npm or Rust advisory exceptions. All dependency advisories
 
 Google sign-in uses `oauth2` for authorization-code exchange and PKCE, and `jsonwebtoken` with its AWS-LC backend for RS256 verification. The previous `openidconnect` dependency pulled in affected `crypto-bigint` and `rsa` versions. Removing that dependency removes both RUSTSEC-2026-0387 and the former RUSTSEC-2023-0071 exception, rather than suppressing either warning. See `docs/GOOGLE-SIGN-IN-VERIFICATION.md` for validation boundaries and tests.
 
+SQLx is temporarily pinned to upstream commit `10462fa4414c6c7f1ed1d39bb31678e3b726878c` because its published 0.9.0 SQLite dependency cannot select the fix for RUSTSEC-2026-0459. That exact upstream change permits patched `libsqlite3-sys`; the remote-generated lock selects 0.39.1. The application uses PostgreSQL, not untrusted local SQLite/WAL files, but the lockfile advisory gate remains enforced without exceptions. Replace the Git pin with a patched published SQLx release when available. All SQLx packages use the same pinned source, and database/migration behavior must pass the full remote regression suite before release.
+
 ## Automated security gates
 
 `.github/workflows/security.yml` audits both committed lockfiles on pushes to `main`, pull requests, manual runs, and a daily best-effort schedule so newly published advisories are checked without code changes. No production credentials or issue creation permissions are used.

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
-import type { CalendarMoveUndo, MoveCalendarItemRequest } from '../src/api/types'
+import type { CalendarMoveUndo, DailyPlan, MoveCalendarItemRequest } from '../src/api/types'
 
 const now = '2026-09-01T09:00:00Z'
 
@@ -24,7 +24,8 @@ async function mockWorkspace(page: Page, initialEvents: Record<string, unknown>[
         sync_conflict_policy: 'ask',
         version: 1,
       }
-    else if (path.startsWith('/daily-plans/')) body = { focus_task_ids: [] }
+    else if (path.startsWith('/daily-plans/'))
+      body = { date: path.slice('/daily-plans/'.length), focus_tasks: [] } satisfies DailyPlan
     else if (path === '/calendars')
       body = {
         items: [
@@ -104,6 +105,7 @@ async function mockWorkspace(page: Page, initialEvents: Record<string, unknown>[
 
 async function openTask(page: Page) {
   await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Make today count.', exact: true })).toBeVisible()
   await page.keyboard.press('n')
   return page.getByRole('dialog', { name: 'New task', exact: true })
 }

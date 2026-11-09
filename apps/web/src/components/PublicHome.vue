@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import * as api from '../api/client'
 import BrandLogo from './BrandLogo.vue'
 
 const route = useRoute()
 const legalAccepted = ref(false)
+const interactive = ref(false)
+onMounted(() => (interactive.value = true))
 const authenticationError = computed(() => {
   if (route.query.auth_error === 'capacity_reached') {
     return 'New registrations are temporarily paused because service capacity has been reached.'
@@ -91,13 +93,18 @@ function signIn() {
           <label
             class="mt-5 flex items-start gap-2 text-xs leading-5 text-slate-500 dark:text-slate-400"
           >
-            <input v-model="legalAccepted" class="mt-1" type="checkbox" />
+            <input v-model="legalAccepted" class="mt-1" type="checkbox" :disabled="!interactive" />
             <span>
               I confirm that I am at least 18 and agree to the
               <RouterLink class="underline" to="/terms">Terms</RouterLink> and acknowledge the
               <RouterLink class="underline" to="/privacy">Privacy Policy</RouterLink>.
             </span>
           </label>
+          <noscript>
+            <p class="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              Enable JavaScript to sign in. Public information remains available without it.
+            </p>
+          </noscript>
           <button
             class="mt-5 inline-flex rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-950 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:outline-white"
             type="button"
@@ -173,6 +180,9 @@ function signIn() {
         class="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"
       >
         <span>Independently operated by Daniel in Indonesia.</span>
+        <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/delete-account">
+          Delete account
+        </RouterLink>
         <a
           class="hover:text-slate-950 dark:hover:text-white"
           href="mailto:daniel.manurung.dev@gmail.com"

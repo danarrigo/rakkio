@@ -2,8 +2,9 @@
     encode zstd gzip
     @backend path /api/* /api-doc/* /docs* /health /ready /webhooks/google/calendar /webhooks/discord
     handle @backend {
+        header X-Robots-Tag "noindex, nofollow"
         reverse_proxy api:3000 {
-            # Backend uses the FIRST XFF value. Never accept a caller's chain.
+            # Backend trusts only the single IP overwritten by this ingress.
             header_up X-Forwarded-For {remote_host}
             header_up -X-Real-IP
             header_up X-Forwarded-Proto https
@@ -17,7 +18,41 @@
             Referrer-Policy strict-origin-when-cross-origin
         }
         root * /srv
-        try_files {path} /index.html
+        redir /home / 308
+        redir /home/ / 308
+        redir /index.html / 308
+        redir /privacy/ /privacy 308
+        redir /privacy.html /privacy 308
+        redir /terms/ /terms 308
+        redir /terms.html /terms 308
+        redir /delete-account/ /delete-account 308
+        redir /delete-account.html /delete-account 308
+
+        @public path / /privacy /terms /delete-account
+        handle @public {
+            try_files {path}.html {path}
+            file_server
+        }
+        @workspace path_regexp ^/(inbox|calendar|projects|notes|operations|files|groups|join|settings|app\.html|groups/[^/]+/assignments)/?$
+        handle @workspace {
+            header X-Robots-Tag "noindex, nofollow"
+            rewrite * /app.html
+            file_server
+        }
+        handle {
+            file_server
+        }
+    }
+    handle_errors 404 {
+        root * /srv
+        header {
+            X-Robots-Tag "noindex, nofollow"
+            X-Frame-Options DENY
+            X-Content-Type-Options nosniff
+            Referrer-Policy strict-origin-when-cross-origin
+            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        }
+        rewrite * /404.html
         file_server
     }
 }

@@ -88,10 +88,21 @@ test('raster favicon fallbacks are declared, served as images, and bypass the SP
   })
   expect(dimensions).toEqual([96, 96])
   const deployment = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
-  const spaRewrite = new RegExp(`^${deployment.rewrites[0].source}$`)
-  for (const path of ['/favicon.svg', '/favicon.png', '/favicon.ico'])
-    expect(spaRewrite.test(path)).toBe(false)
-  expect(spaRewrite.test('/inbox')).toBe(true)
+  const appRewrite = deployment.rewrites.find(
+    (route: { destination: string }) => route.destination === '/app.html',
+  )
+  expect(appRewrite).toBeDefined()
+  const privateEntry = new RegExp(`^${appRewrite.source}$`)
+  for (const path of [
+    '/favicon.svg',
+    '/favicon.png',
+    '/favicon.ico',
+    '/assets/example.js',
+    '/robots.txt',
+    '/sitemap.xml',
+  ])
+    expect(privateEntry.test(path)).toBe(false)
+  expect(privateEntry.test('/inbox')).toBe(true)
 })
 
 async function noOverflow(page: Page) {

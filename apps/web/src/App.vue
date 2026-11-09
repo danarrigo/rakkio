@@ -181,6 +181,7 @@ function runKeyboardAction(action: GlobalKeyboardAction) {
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (
     publicRoute.value ||
+    !store.user ||
     store.authenticationRequired ||
     paletteMode.value ||
     document.querySelector('[role="dialog"]')
@@ -217,7 +218,7 @@ onBeforeUnmount(() => {
 <template>
   <RouterView v-if="publicRoute" />
 
-  <PublicHome v-else-if="store.authenticationRequired" />
+  <PublicHome v-else-if="store.authenticationRequired || (route.name === 'today' && !store.user)" />
 
   <div v-else class="flex min-h-dvh bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-50">
     <a

@@ -780,6 +780,10 @@ async fn security_headers(
     );
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(
+        "x-robots-tag",
+        HeaderValue::from_static("noindex, nofollow"),
+    );
+    headers.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static("frame-ancestors 'none'; object-src 'none'; base-uri 'none'"),
     );
