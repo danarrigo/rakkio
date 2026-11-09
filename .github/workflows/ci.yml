@@ -44,15 +44,6 @@ jobs:
           toolchain: stable
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      # Temporary remote-only resolution; remove once the generated lock is adopted.
-      - name: Resolve patched SQLite dependency
-        run: cargo update -p sqlx && cargo update -p libsqlite3-sys --precise 0.39.1
-      - name: Preserve resolved lockfile
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: resolved-cargo-lock
-          path: Cargo.lock
-          retention-days: 3
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --no-fail-fast
