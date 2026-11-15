@@ -22,6 +22,8 @@ mod group_assignments;
 mod groups;
 #[path = "http/handles.rs"]
 mod handles;
+#[path = "http/idle_compute.rs"]
+mod idle_compute;
 #[path = "http/rebrand.rs"]
 mod rebrand;
 #[path = "http/security_audit.rs"]
