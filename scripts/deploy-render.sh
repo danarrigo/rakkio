@@ -292,7 +292,7 @@ fi
 say "Render readiness passed."
 
 stage "Scheduled synchronization worker"
-say "GitHub Actions calls the API's authenticated one-shot synchronization endpoint every 15 minutes. Scheduled runs do not compile Rust or start a worker container."
+say "GitHub Actions calls the API's authenticated one-shot synchronization endpoint hourly to conserve database compute. Scheduled runs do not compile Rust or start a worker container."
 set_secret PROSEPECT_WORKER_TRIGGER_TOKEN "$WORKER_TRIGGER_TOKEN"
 set_var PROSEPECT_WORKER_ENABLED "true"
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then

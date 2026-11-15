@@ -45,11 +45,11 @@ The supported hosted-beta topology is:
 - Vercel serves the Vue application at `https://rakkio.com`.
 - Render Free runs the Axum API at `https://api.rakkio.com`.
 - Local mutations wake an in-process synchronization dispatcher and Google webhooks enqueue inbound changes.
-- GitHub Actions is configured to call an authenticated recovery and watch-renewal endpoint every 15 minutes, but execution is best-effort and can be delayed by hours.
+- GitHub Actions is configured to call an authenticated recovery and watch-renewal endpoint hourly, conserving serverless database compute. Execution is best-effort and can be delayed by hours.
 - Neon PostgreSQL stores all canonical and operational state.
 - A private Cloudflare R2 bucket stores attachments through presigned URLs.
 
-This topology does not require a Google Cloud billing account. Render Free is suitable for a personal beta, not a production SLA. When executed on time, the synchronization trigger can keep the API awake and consume most of the service's monthly free-instance allowance. It cannot guarantee wakefulness when GitHub delays runs. If the trigger is disabled, the API sleeps after 15 idle minutes and can take about one minute to wake. Free services can be suspended when monthly allowances are exhausted. GitHub schedules can be delayed and public-repository schedules are disabled after 60 days without repository activity.
+This topology does not require a Google Cloud billing account. Render Free is suitable for a personal beta, not a production SLA. The hourly synchronization trigger does not keep the API continuously awake. Render Free sleeps after 15 idle minutes and can take about one minute to wake. Frequent external HTTP checks can keep the API awake, even if database-free liveness checks still allow Neon to suspend. Free services can be suspended when monthly allowances are exhausted. GitHub schedules can be delayed and public-repository schedules are disabled after 60 days without repository activity.
 
 ### Guided setup
 
@@ -63,7 +63,7 @@ The wizard opens each required dashboard, captures secrets with hidden input, st
 
 ### Render API
 
-`render.yaml` defines one Singapore-region Docker web service on the Free plan. Render builds `apps/api/Dockerfile` with the repository root as its build context, checks `/ready`, and deploys changes from the default branch. The Blueprint prompts for PostgreSQL, Google, encryption, and R2 credentials rather than storing them in Git.
+`render.yaml` defines one Singapore-region Docker web service on the Free plan. Render builds `apps/api/Dockerfile` with the repository root as its build context, checks database-free `/health`, and deploys changes from the default branch. The Blueprint prompts for PostgreSQL, Google, encryption, and R2 credentials rather than storing them in Git.
 
 Render must receive these canonical public values:
 
@@ -84,11 +84,11 @@ Attach `api.rakkio.com` as a Render custom domain and add the DNS record Render 
 
 ### Scheduled worker
 
-`.github/workflows/worker.yml` calls `POST /internal/synchronization/run` at minutes 7, 22, 37, and 52 of each hour to avoid the busiest start-of-hour scheduling window. The API verifies a bearer token, enqueues stale calendar synchronization and expiring webhook watches, and processes at most one claim. This remains the durable recovery path when an immediate dispatch or Google notification is missed. Overlapping runs are serialized. Scheduled runs use `scripts/worker_request.py` (Python standard library plus `curl`): they do not compile Rust and do not start a worker container. The job remains skipped until `PROSEPECT_WORKER_ENABLED=true` and `PROSEPECT_WORKER_TRIGGER_TOKEN` is configured.
+`.github/workflows/worker.yml` calls `POST /internal/synchronization/run` at minute 7 of each hour to avoid the busiest start-of-hour scheduling window. The API verifies a bearer token, enqueues stale calendar synchronization and expiring webhook watches, and processes at most one claim. This remains the durable recovery path when an immediate dispatch or Google notification is missed. Overlapping runs are serialized. Scheduled runs use `scripts/worker_request.py` (Python standard library plus `curl`): they do not compile Rust and do not start a worker container. The job remains skipped until `PROSEPECT_WORKER_ENABLED=true` and `PROSEPECT_WORKER_TRIGGER_TOKEN` is configured.
 
 Worker POST requests retry only explicit HTTP429 responses, with 30/60/120-second backoff and a 360-second total request/retry budget (at most four attempts, each at most 180 seconds). `Retry-After` can extend a delay but cannot exceed the remaining budget. Ambiguous POST network failures/timeouts and 5xx responses are not replayed because work may already have started. Readiness GET requests also retry transient network/408/5xx errors within a separate 150-second budget. Redirects are not followed. Each attempt logs status, curl exit code and only allowlisted diagnostic headers (Retry-After, hosting/request IDs, server and content type), never credentials, cookies or response bodies. Local HTTP regression tests run in CI. Persistent throttling, exhausted budgets, malformed success responses, network, authentication, enqueue, or worker infrastructure failures still fail the workflow. A separate bounded `GET /ready` in the same job also verifies the API's PostgreSQL readiness response, even when the trigger fails. A successful trigger does **not** prove Google synchronization succeeded: `SyncService::run_once` records provider failures for retry and can still return `processed: true` with HTTP 200. Inspect the Operations queue/final-failure snapshot and authorized worker logs separately.
 
-The repository is public, so standard GitHub-hosted runners are free. Actual recovery schedules have been observed delayed by hours despite the configured 15-minute cadence. Neither this job nor Render's health check is independent uptime monitoring, and neither verifies alert delivery. Enable Actions failure notifications and manually run the workflow after changing synchronization configuration. Before public beta, configure an independent free HTTP monitor for the frontend and `/ready`, a missed-recovery-run check, and a tested alert destination. See [the public-beta checklist](PUBLIC-BETA-CHECKLIST.md) for owner-only release gates.
+The repository is public, so standard GitHub-hosted runners are free. Actual recovery schedules have been observed delayed by hours; the configured hourly cadence is not a timing guarantee. Neither this job nor Render's health check is independent uptime monitoring, and neither verifies alert delivery. Enable Actions failure notifications and manually run the workflow after changing synchronization configuration. Before public beta, configure an independent free HTTP monitor for the frontend and `/health`, a missed-recovery-run check, and a tested alert destination. See [the public-beta checklist](PUBLIC-BETA-CHECKLIST.md) for owner-only release gates.
 
 ### Domains and OAuth
 
@@ -159,7 +159,7 @@ The webhook has four dedicated admission slots, a 64 KiB signed raw-body cap and
 ## Health, metrics, and logs
 
 - `GET /health` checks the API process.
-- `GET /ready` checks PostgreSQL.
+- `GET /ready` checks PostgreSQL. Use it for explicit dependency diagnostics and the hourly worker check, not a frequent uptime probe: every call wakes or keeps the database active.
 - `GET /metrics` returns Prometheus text metrics only to a session-authenticated Operations owner configured in `ADMIN_USER_IDS` (401 anonymously, 403 for ordinary accounts). It is not a public scrape endpoint. Keep any metrics collector private and do not put session credentials in URLs or logs.
 - API logs carry request IDs and structured production logs.
 
@@ -250,7 +250,15 @@ Run one claim for diagnostics:
 cargo run -p prosepect-api --bin worker -- --once
 ```
 
-Run the long-lived worker without `--once` for Docker Compose or a future server. Jobs are idempotent per tenant. While the API is awake, its dispatcher checks for eligible queued jobs after a five-second wait or a wake signal, processing at most 32 jobs per drain. This resumes due failed retries without a manual Sync now action, including after startup; long jobs and backlog can delay them. It does not keep Render Free awake or guarantee cron timing.
+Run the long-lived worker without `--once` for Docker Compose or a future always-on database server. That standalone mode actively polls; do not run it against a serverless free database if idle suspension is required. Jobs are idempotent per tenant. The API dispatcher instead wakes on startup, authenticated mutations, provider notifications, external worker calls and known durable retry/cleanup deadlines, processing at most 32 jobs per drain. After a drain, one query determines the next deadline relative to PostgreSQL's clock. An empty queue with no expiring records waits without database traffic. Due rows temporarily locked elsewhere retry after five seconds; infrastructure failures back off from five seconds to five minutes. Future retries and cleanup remain automatic without a manual Sync now action. Long jobs and backlog can delay them. The dispatcher does not keep Render Free awake or guarantee cron timing.
+
+### Serverless compute allowance
+
+Neon's default idle-suspension timeout is five minutes. Small repetitive queries can consume the compute allowance even when CPU usage and database size are low. Use `/health` for Render and external liveness monitors, including existing UptimeRobot monitors; a monitor merely named `/health` is not proof its target URL was changed. Keep `/ready` dependency-based rather than returning a cached or fabricated success. This trades continuous database-health monitoring for idle suspension; the hourly worker still checks PostgreSQL and fails on dependency errors.
+
+The hosted hourly schedule reduces idle recovery frequency, not manual sync or Google webhook dispatch. Data changes and scheduled retries remain durable. Cleanup still honors expiry and upload grace periods, and storage reservations stay charged until deletion is acknowledged. A suspended API resumes deadline discovery on startup; expiry authorization never depends on background cleanup having run.
+
+Check usage and the reset date in Neon after deployment, without probing the database repeatedly during the observation window. Observe compute state through Neon's control-plane API instead. Already-consumed CU-hours are not refunded by this fix. Active app tabs, real user work, provider retries, external `/ready` probes and standalone workers can still use the remaining allowance; this is not a promise of uninterrupted free hosting. Do not raise the plan, billing limits or resource sizes automatically.
 
 Interrupted jobs left in `running` status are not automatically reclaimed, even after their lease expires. Safe recovery requires live-worker exclusion and claim fencing; lease expiry alone does not prove that processing stopped. Do not bulk-reset these rows or replay exhausted jobs without inspecting their state.
 

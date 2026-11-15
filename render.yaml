@@ -7,7 +7,8 @@ services:
     region: singapore
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    healthCheckPath: /ready
+    # Liveness must not wake an idle serverless database. /ready remains diagnostic.
+    healthCheckPath: /health
     autoDeployTrigger: commit
     buildFilter:
       paths:

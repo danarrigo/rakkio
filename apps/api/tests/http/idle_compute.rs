@@ -87,6 +87,77 @@ async fn idle_maintenance_api_and_health_checks_leave_postgres_quiet(
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn authenticated_mutation_schedules_future_cleanup_without_idle_polling(
+    pool: PgPool,
+) -> anyhow::Result<()> {
+    let store = Store::from_pool(pool.clone());
+    store.ensure_development_user(DEVELOPMENT_USER_ID).await?;
+    let router = app::build(&test_config(), store)?;
+    let created = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/tasks")
+                .header(DEVELOPMENT_USER_HEADER, DEVELOPMENT_USER_ID.to_string())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"title":"Deadline cleanup fixture"}"#))?,
+        )
+        .await?;
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let task: serde_json::Value =
+        serde_json::from_slice(&to_bytes(created.into_body(), 65536).await?)?;
+    let deleted = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/tasks/{}/delete-with-undo",
+                    task["id"].as_str().unwrap()
+                ))
+                .header(DEVELOPMENT_USER_HEADER, DEVELOPMENT_USER_ID.to_string())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"expected_version":{}}}"#,
+                    task["version"]
+                )))?,
+        )
+        .await?;
+    assert_eq!(deleted.status(), StatusCode::OK);
+    // Shorten only this disposable receipt, then notify through an ordinary HTTP
+    // mutation. No manual dispatcher wake, run_once or future cleanup call.
+    sqlx::query("UPDATE task_delete_undos SET expires_at=clock_timestamp()+INTERVAL '2 seconds'")
+        .execute(&pool)
+        .await?;
+    let note = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/notes")
+                .header(DEVELOPMENT_USER_HEADER, DEVELOPMENT_USER_ID.to_string())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"title":"Real activity"}"#))?,
+        )
+        .await?;
+    assert_eq!(note.status(), StatusCode::CREATED);
+    tokio::time::timeout(StdDuration::from_secs(4), async {
+        loop {
+            let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM task_delete_undos")
+                .fetch_one(&pool)
+                .await?;
+            if remaining == 0 {
+                break Ok::<_, anyhow::Error>(());
+            }
+            tokio::time::sleep(StdDuration::from_millis(25)).await;
+        }
+    })
+    .await??;
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn health_stays_live_but_readiness_fails_when_database_is_unavailable(
     pool: PgPool,
 ) -> anyhow::Result<()> {

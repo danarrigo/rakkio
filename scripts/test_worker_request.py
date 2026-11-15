@@ -2,6 +2,8 @@
 import contextlib
 import http.server
 import io
+from pathlib import Path
+import re
 import subprocess
 import threading
 import time
@@ -12,6 +14,18 @@ import worker_request
 
 
 class WorkerRequestTests(unittest.TestCase):
+    def test_hosted_recovery_is_hourly_and_still_supports_manual_dispatch(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/worker.yml").read_text()
+        self.assertEqual(re.findall(r'cron:\s*"([^"]+)"', workflow), ["7 * * * *"])
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("worker_request.py ready", workflow)
+
+    def test_render_uses_database_free_liveness_without_changing_the_service(self):
+        blueprint = (Path(__file__).resolve().parents[1] / "render.yaml").read_text()
+        self.assertRegex(blueprint, r"(?m)^\s+healthCheckPath: /health$")
+        self.assertRegex(blueprint, r"(?m)^\s+name: rakkio-api$")
+        self.assertRegex(blueprint, r"(?m)^\s+plan: free$")
+
     @contextlib.contextmanager
     def endpoint(self, responses):
         calls = []
