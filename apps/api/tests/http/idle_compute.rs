@@ -55,6 +55,7 @@ async fn assert_idle_health_checks_do_not_query_postgres(
     let client = reqwest::Client::builder()
         .timeout(StdDuration::from_secs(5))
         .build()?;
+    let mut newest_activity = before;
     for _ in 0..11 {
         let response = client
             .get(format!("http://{address}/health"))
@@ -62,11 +63,13 @@ async fn assert_idle_health_checks_do_not_query_postgres(
             .await?;
         assert_eq!(response.status(), StatusCode::OK);
         tokio::time::sleep(StdDuration::from_secs(1)).await;
+        // Idle SQLx test connections may close. Preserve every observed maximum
+        // instead of mistaking disappearance for activity or missing an earlier poll.
+        newest_activity = newest_activity.max(last_database_activity(&mut observer).await?);
     }
-    let after = last_database_activity(&mut observer).await?;
     server.abort();
     assert_eq!(
-        before, after,
+        before, newest_activity,
         "idle API and repeated health checks must not issue background database queries"
     );
     Ok(())
