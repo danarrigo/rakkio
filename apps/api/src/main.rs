@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(
         address = %config.bind_address,
         environment = ?config.environment,
-        "Prosepect API listening"
+        "rakkio API listening"
     );
 
     axum::serve(

@@ -195,12 +195,13 @@ require_value() {
   fi
 }
 
-banner "Prosepect free hosted deployment"
+banner "rakkio hosted deployment"
+say "For an existing installation, reuse its saved project, bucket, OAuth client and service. Do not create replacements just to change legacy names."
 
 stage "Neon PostgreSQL"
 say "Neon stores canonical product data, synchronization jobs, conflicts, and activity."
 open_url "https://console.neon.tech/app/projects"
-step "Create a project named prosepect in a region close to Singapore."
+step "Select the existing rakkio project, or create a new rakkio project near Singapore for a new installation."
 step "Open Connect, select the direct connection rather than the pooled connection, and require TLS."
 ask_secret DATABASE_URL "Paste the direct PostgreSQL connection string:"
 if [[ "$DATABASE_URL" != postgres://* && "$DATABASE_URL" != postgresql://* ]]; then
@@ -213,10 +214,10 @@ chmod 600 "$ENV_FILE"
 stage "Cloudflare R2 attachments"
 say "R2 stores private attachment bytes. Stop here if Cloudflare requests a payment authorization you do not accept."
 open_url "https://dash.cloudflare.com/?to=/:account/r2/overview"
-step "Create a private bucket named prosepect."
+step "Reuse the existing private bucket. For a new installation, create a private bucket named rakkio."
 step "Open Manage R2 API Tokens and create an Object Read & Write token restricted to that bucket."
-ask S3_BUCKET "R2 bucket name [prosepect]:"
-S3_BUCKET="${S3_BUCKET:-prosepect}"
+ask S3_BUCKET "R2 bucket name [rakkio for new installations]:"
+S3_BUCKET="${S3_BUCKET:-rakkio}"
 step "Copy the Account ID shown on the R2 Overview page. The wizard derives the S3 endpoint from it."
 ask R2_ACCOUNT_ID "Cloudflare Account ID:"
 if [[ ! "$R2_ACCOUNT_ID" =~ ^[[:xdigit:]]{32}$ ]]; then
@@ -238,16 +239,16 @@ chmod 600 "$ENV_FILE"
 
 stage "Google OAuth and Calendar"
 say "Google OAuth provides login and optional incremental Calendar consent. This setup does not enable paid Google Cloud services."
-ask GCP_PROJECT_ID "Google Cloud Project ID [prosepect]:"
-GCP_PROJECT_ID="${GCP_PROJECT_ID:-prosepect}"
+ask GCP_PROJECT_ID "Existing Google Cloud Project ID:"
+require_value GCP_PROJECT_ID "$GCP_PROJECT_ID"
 open_url "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=${GCP_PROJECT_ID}"
 step "Enable the Google Calendar API."
 open_url "https://console.cloud.google.com/auth/overview?project=${GCP_PROJECT_ID}"
 step "Configure the OAuth consent screen and add your Google account as a test user if the app remains in testing."
 open_url "https://console.cloud.google.com/auth/clients?project=${GCP_PROJECT_ID}"
-step "Create a Web application client named Prosepect."
-step "Add https://prosepect.com as an authorized JavaScript origin."
-step "Add https://api.prosepect.com/api/v1/auth/google/callback as an authorized redirect URI."
+step "Use the existing Web application client, or create one named rakkio for a new installation."
+step "Add https://rakkio.com as an authorized JavaScript origin."
+step "Add https://api.rakkio.com/api/v1/auth/google/callback as an authorized redirect URI."
 ask GOOGLE_CLIENT_ID "Google OAuth Client ID:"
 ask_secret GOOGLE_CLIENT_SECRET "Google OAuth Client Secret:"
 require_value GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
@@ -276,12 +277,12 @@ if [[ -n "$(git status --porcelain)" ]]; then
   warn "The repository is not clean. Commit and push the reviewed deployment files before creating the Blueprint."
   exit 1
 fi
-open_url "https://render.com/deploy?repo=https://github.com/danarrigo/prosepect"
-step "Connect GitHub, select the main branch, and create the prosepect-api Blueprint on the Free plan."
+open_url "https://render.com/deploy?repo=https://github.com/danarrigo/rakkio"
+step "Connect GitHub and select main. Reuse the existing rakkio-api service; create it from the Blueprint only for a new installation, on the Free plan."
 step "For each requested secret, paste the matching value from ${ENV_FILE}: DATABASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY, WORKER_TRIGGER_TOKEN, S3_BUCKET, S3_ENDPOINT, S3_PUBLIC_ENDPOINT, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY."
 step "Wait for the initial Docker build and deployment to finish."
-pause "Press Enter after Render reports that prosepect-api is live."
-ask RENDER_API_URL "Render service URL, such as https://prosepect-api.onrender.com:"
+pause "Press Enter after Render reports that rakkio-api is live."
+ask RENDER_API_URL "Render service URL from the dashboard (keep existing legacy hostnames):"
 RENDER_API_URL="${RENDER_API_URL%/}"
 require_value RENDER_API_URL "$RENDER_API_URL"
 write_env RENDER_API_URL "$RENDER_API_URL"
@@ -292,7 +293,7 @@ fi
 say "Render readiness passed."
 
 stage "Scheduled synchronization worker"
-say "GitHub Actions calls the API's authenticated one-shot synchronization endpoint every 15 minutes. Scheduled runs do not compile Rust or start a worker container."
+say "GitHub Actions calls the API's authenticated one-shot synchronization endpoint hourly to conserve database compute. Scheduled runs do not compile Rust or start a worker container."
 set_secret PROSEPECT_WORKER_TRIGGER_TOKEN "$WORKER_TRIGGER_TOKEN"
 set_var PROSEPECT_WORKER_ENABLED "true"
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
@@ -303,26 +304,26 @@ else
 fi
 
 stage "Domains and Vercel"
-say "Attach api.prosepect.com to Render, then deploy the SPA at prosepect.com."
+say "Use api.rakkio.com for Render and rakkio.com for the web application. Reuse existing deployments and DNS records."
 open_url "https://dashboard.render.com"
-step "Open prosepect-api, then Settings and Custom Domains. Add api.prosepect.com."
+step "Open rakkio-api, then Settings and Custom Domains. Confirm api.rakkio.com is attached, or add it for a new installation."
 step "Add the DNS record Render displays and wait for its TLS certificate."
 open_url "https://vercel.com/new"
-step "Under Import Git Repository, import the existing danarrigo/prosepect repository. Do not clone it into a new repository."
+step "Reuse rakkio-web. For a new installation, import the existing danarrigo/rakkio repository without cloning it into a new repository."
 step "Set apps/web as Root Directory and enable including files outside the root."
-step "Set VITE_API_URL to https://api.prosepect.com for Production."
-step "Deploy, attach prosepect.com, and add the DNS records Vercel displays."
+step "Set VITE_API_URL to https://api.rakkio.com for Production."
+step "Deploy, confirm rakkio.com is attached, and add only missing DNS records shown by Vercel."
 pause "Press Enter when Render, Vercel, and DNS are configured."
 
 stage "Invite and verify"
 say "The API migrations create the invite table before the first sign-in."
 for attempt in $(seq 1 40); do
-  if curl --fail --silent "https://api.prosepect.com/ready" >/dev/null; then
+  if curl --fail --silent "https://api.rakkio.com/ready" >/dev/null; then
     break
   fi
   sleep 15
 done
-curl --fail --silent "https://api.prosepect.com/ready" >/dev/null
+curl --fail --silent "https://api.rakkio.com/ready" >/dev/null
 if command -v psql >/dev/null 2>&1; then
   psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --set invite_email="$INVITE_EMAIL" <<'SQL'
 INSERT INTO account_invites (id, email)
@@ -332,7 +333,7 @@ SQL
 else
   warn "psql is unavailable. Add the invite through the Neon SQL editor."
 fi
-open_url "https://prosepect.com"
+open_url "https://rakkio.com"
 step "Sign in with ${INVITE_EMAIL}."
 step "Create a task and event, upload and download an attachment, then connect Google Calendar."
 step "Check Render logs and the latest Synchronization worker workflow for errors."

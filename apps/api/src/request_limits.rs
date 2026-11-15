@@ -17,6 +17,7 @@ use crate::{
     auth::CurrentUser,
     error::{AppError, AppResult},
     rate_limit::LoginRateLimiter,
+    sync_dispatcher::SyncDispatcher,
 };
 
 #[derive(Clone)]
@@ -34,6 +35,15 @@ struct AccountSlots {
     requests: Arc<Semaphore>,
     writes: Arc<Semaphore>,
     large: Arc<Semaphore>,
+}
+
+// Cancellation can leave committed durable work (notably uncertain uploads).
+// Notify on scope exit as well as normal handler completion.
+struct MutationWake(SyncDispatcher);
+impl Drop for MutationWake {
+    fn drop(&mut self) {
+        self.0.wake();
+    }
 }
 
 struct AccountPermit {
@@ -155,7 +165,11 @@ pub async fn limit_requests(
             Ok(permit) => permit,
             Err(error) => return error.into_response(),
         };
-        return next.run(request).await;
+        let response = next.run(request).await;
+        if response.status().is_success() || response.status().is_redirection() {
+            state.sync_dispatcher.wake();
+        }
+        return response;
     }
     let admission = match acquire(&state.request_limits.requests).await {
         Ok(permit) => permit,
@@ -205,7 +219,13 @@ pub async fn limit_requests(
     } else {
         None
     };
+    let _mutation_wake = write.then(|| MutationWake(state.sync_dispatcher.clone()));
     let response = next.run(Request::from_parts(parts, body)).await;
+    // Redirecting OAuth starts also create expiring records. Ordinary reads and
+    // health checks do not trigger sweeps; mutation scope exit notifies below.
+    if !write && response.status().is_redirection() {
+        state.sync_dispatcher.wake();
+    }
     let (parts, body) = response.into_parts();
     // Streaming exports/downloads still occupy resources after the handler has
     // returned. Retain admission until the response finishes or is dropped.

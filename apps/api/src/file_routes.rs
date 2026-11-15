@@ -154,6 +154,9 @@ pub async fn upload_file(
             state.max_total_file_storage_bytes,
         )
         .await?;
+    // Arm the durable grace deadline before provider I/O, even if this request
+    // is later cancelled while its PUT is still uncertain.
+    state.sync_dispatcher.wake();
     // A failed/timed-out PUT is uncertain: keep its durable reservation until
     // grace-period cleanup confirms deletion, rather than releasing quota now.
     tokio::time::timeout(

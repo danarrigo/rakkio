@@ -335,7 +335,7 @@ Raw provider payloads are processed transiently and are not retained as duplicat
 - Domain: `rakkio.com`
 - Frontend: Vercel
 - Backend: Axum container on Render Free
-- Scheduled work: GitHub Actions invokes an authenticated one-shot synchronization endpoint every 15 minutes without compiling Rust per run
+- Scheduled work: GitHub Actions invokes an authenticated one-shot synchronization endpoint hourly without compiling Rust per run; manual sync, provider notifications and durable retry deadlines remain independent of that cadence
 - PostgreSQL: Neon free tier during beta
 - Files: private Cloudflare R2 bucket with a 5 GiB application-level storage quota
 - Access: invite-only

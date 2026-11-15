@@ -2,7 +2,9 @@ name: Synchronization worker
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    # Hourly recovery conserves the hosted database's free compute allowance.
+    # Manual sync, provider webhooks and already-scheduled retries remain immediate.
+    - cron: "7 * * * *"
   workflow_dispatch:
 
 permissions:

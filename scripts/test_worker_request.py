@@ -2,6 +2,8 @@
 import contextlib
 import http.server
 import io
+from pathlib import Path
+import re
 import subprocess
 import threading
 import time
@@ -12,6 +14,29 @@ import worker_request
 
 
 class WorkerRequestTests(unittest.TestCase):
+    def test_hosted_recovery_is_hourly_and_still_supports_manual_dispatch(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/worker.yml").read_text()
+        self.assertEqual(re.findall(r'cron:\s*"([^"]+)"', workflow), ["7 * * * *"])
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("worker_request.py ready", workflow)
+
+    def test_hosted_setup_uses_current_brand_and_preserves_existing_secret_names(self):
+        wizard = (Path(__file__).resolve().parents[1] / "scripts/deploy-render.sh").read_text()
+        self.assertIn('banner "rakkio hosted deployment"', wizard)
+        self.assertIn("https://github.com/danarrigo/rakkio", wizard)
+        self.assertIn("https://api.rakkio.com/api/v1/auth/google/callback", wizard)
+        self.assertNotIn("api.prosepect.com", wizard)
+        self.assertNotIn("danarrigo/prosepect", wizard)
+        self.assertIn("Do not create replacements just to change legacy names", wizard)
+        self.assertIn("set_secret PROSEPECT_WORKER_TRIGGER_TOKEN", wizard)
+        self.assertIn('set_var PROSEPECT_WORKER_ENABLED "true"', wizard)
+
+    def test_render_uses_database_free_liveness_without_changing_the_service(self):
+        blueprint = (Path(__file__).resolve().parents[1] / "render.yaml").read_text()
+        self.assertRegex(blueprint, r"(?m)^\s+healthCheckPath: /health$")
+        self.assertRegex(blueprint, r"(?m)^\s+name: rakkio-api$")
+        self.assertRegex(blueprint, r"(?m)^\s+plan: free$")
+
     @contextlib.contextmanager
     def endpoint(self, responses):
         calls = []
