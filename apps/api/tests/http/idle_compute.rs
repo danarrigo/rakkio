@@ -6,7 +6,7 @@ async fn last_database_activity(
     observer: &mut PgConnection,
 ) -> anyhow::Result<Option<chrono::DateTime<Utc>>> {
     Ok(sqlx::query_scalar(
-        "SELECT MAX(query_start) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()",
+        "SELECT MAX(query_start) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND backend_type='client backend' AND application_name='rakkio-idle-regression'",
     )
     .fetch_one(observer)
     .await?)
@@ -27,7 +27,19 @@ async fn assert_idle_health_checks_do_not_query_postgres(
     }
     // No users, provider credentials, or jobs: startup and real HTTP health checks
     // must not turn an otherwise idle database into a continuous polling target.
-    let router = app::build(&config, Store::from_pool(pool.clone()))?;
+    // Observe only app-owned clients, not autovacuum or the test runner. Retain
+    // idle app connections so startup completion is an observable DB barrier.
+    let app_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(
+            (*pool.connect_options())
+                .clone()
+                .application_name("rakkio-idle-regression"),
+        )
+        .await?;
+    let router = app::build(&config, Store::from_pool(app_pool.clone()))?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     let server = tokio::spawn(async move {
@@ -41,17 +53,21 @@ async fn assert_idle_health_checks_do_not_query_postgres(
     // Hold a separate observer connection. Its own statistics queries are excluded
     // by backend PID, and no production database or provider is involved.
     let mut observer = pool.acquire().await?;
-    let before = tokio::time::timeout(StdDuration::from_secs(10), async {
+    let before = tokio::time::timeout(StdDuration::from_secs(20), async {
         loop {
-            let first = last_database_activity(&mut observer).await?;
-            tokio::time::sleep(StdDuration::from_millis(300)).await;
-            let second = last_database_activity(&mut observer).await?;
-            if first.is_some() && first == second {
-                break Ok::<_, anyhow::Error>(second);
+            let initialized: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND application_name='rakkio-idle-regression' AND state='idle' AND query LIKE '%rakkio: background deadline%')",
+            ).fetch_one(&mut *observer).await?;
+            if initialized {
+                break last_database_activity(&mut observer).await;
             }
+            tokio::time::sleep(StdDuration::from_millis(25)).await;
         }
-    })
-    .await??;
+    }).await??;
+    assert!(
+        before.is_some(),
+        "startup scheduling must complete before measuring idle work"
+    );
     let client = reqwest::Client::builder()
         .timeout(StdDuration::from_secs(5))
         .build()?;
@@ -68,6 +84,8 @@ async fn assert_idle_health_checks_do_not_query_postgres(
         newest_activity = newest_activity.max(last_database_activity(&mut observer).await?);
     }
     server.abort();
+    drop(client);
+    app_pool.close().await;
     assert_eq!(
         before, newest_activity,
         "idle API and repeated health checks must not issue background database queries"

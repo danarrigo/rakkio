@@ -114,6 +114,7 @@ impl SyncDispatcher {
 async fn next_work_delay(store: &Store, sync_enabled: bool) -> anyhow::Result<Option<Duration>> {
     let seconds: Option<f64> = sqlx::query_scalar(
         r#"
+        /* rakkio: background deadline */
         SELECT EXTRACT(EPOCH FROM (MIN(due_at) - clock_timestamp()))::DOUBLE PRECISION
         FROM (
             SELECT MIN(GREATEST(available_at, leased_until)) AS due_at
