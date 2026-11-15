@@ -788,7 +788,7 @@ impl SyncService {
             self.record_activity(
                 user_id,
                 "local_event_created",
-                "Created a Google event from Prosepect",
+                "Created a Google event from rakkio",
             )
             .await?;
         }
@@ -839,7 +839,7 @@ impl SyncService {
                 self.record_activity(
                     user_id,
                     "local_event_deleted",
-                    "Deleted a Google event from Prosepect",
+                    "Deleted a Google event from rakkio",
                 )
                 .await?;
             } else {
@@ -861,7 +861,7 @@ impl SyncService {
                 self.record_activity(
                     user_id,
                     "local_event_updated",
-                    "Updated a Google event from Prosepect",
+                    "Updated a Google event from rakkio",
                 )
                 .await?;
             }

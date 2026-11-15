@@ -20,6 +20,17 @@ class WorkerRequestTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("worker_request.py ready", workflow)
 
+    def test_hosted_setup_uses_current_brand_and_preserves_existing_secret_names(self):
+        wizard = (Path(__file__).resolve().parents[1] / "scripts/deploy-render.sh").read_text()
+        self.assertIn('banner "rakkio hosted deployment"', wizard)
+        self.assertIn("https://github.com/danarrigo/rakkio", wizard)
+        self.assertIn("https://api.rakkio.com/api/v1/auth/google/callback", wizard)
+        self.assertNotIn("api.prosepect.com", wizard)
+        self.assertNotIn("danarrigo/prosepect", wizard)
+        self.assertIn("Do not create replacements just to change legacy names", wizard)
+        self.assertIn("set_secret PROSEPECT_WORKER_TRIGGER_TOKEN", wizard)
+        self.assertIn('set_var PROSEPECT_WORKER_ENABLED "true"', wizard)
+
     def test_render_uses_database_free_liveness_without_changing_the_service(self):
         blueprint = (Path(__file__).resolve().parents[1] / "render.yaml").read_text()
         self.assertRegex(blueprint, r"(?m)^\s+healthCheckPath: /health$")

@@ -46,7 +46,7 @@ The supported hosted-beta topology is:
 - Render Free runs the Axum API at `https://api.rakkio.com`.
 - Local mutations wake an in-process synchronization dispatcher and Google webhooks enqueue inbound changes.
 - GitHub Actions is configured to call an authenticated recovery and watch-renewal endpoint hourly, conserving serverless database compute. Execution is best-effort and can be delayed by hours.
-- Neon PostgreSQL stores all canonical and operational state.
+- Neon PostgreSQL stores all canonical and operational state. Its production project display name is `rakkio`; existing database/role names, endpoint hostnames and IDs are retained for compatibility.
 - A private Cloudflare R2 bucket stores attachments through presigned URLs.
 
 This topology does not require a Google Cloud billing account. Render Free is suitable for a personal beta, not a production SLA. The hourly synchronization trigger does not keep the API continuously awake. Render Free sleeps after 15 idle minutes and can take about one minute to wake. Frequent external HTTP checks can keep the API awake, even if database-free liveness checks still allow Neon to suspend. Free services can be suspended when monthly allowances are exhausted. GitHub schedules can be delayed and public-repository schedules are disabled after 60 days without repository activity.
@@ -208,7 +208,7 @@ Unset or whitespace-only `ADMIN_USER_IDS` denies everyone. Malformed members, in
 
 The page polls every 60 seconds after a request finishes, only while mounted and visible. Requests do not overlap; hiding/unmounting cancels in-flight requests, and late results are ignored. Requests time out after 15 seconds. Failures retain the previous snapshot with a stale warning and a retry button; authorization denial clears it. A degraded response replaces old numbers with unknowns. Last successful refresh records receipt of a snapshot (which can itself be degraded), not overall service health.
 
-An independent **External uptime monitoring** panel displays the owner-configured public UptimeRobot badge for the hosted prosepect website/API and links to its uptime/outage history: <https://stats.uptimerobot.com/xz23PeH80u>. It uses the badge's SVG image, not third-party scripts or a secret API key. Its public identifiers live in `apps/web/src/components/OperationsUptime.vue`; self-hosted installations must replace them with their own monitor before treating the panel as their installation's uptime. The badge refreshes every 60 seconds while visible, follows the provider's actual check/cache intervals and switches with the app theme. A failed/15-second-timed-out image reports unknown, never Up inferred from a healthy snapshot. Receipt time is not monitor-check time. The panel remains independent of snapshot failures for an already-authorized owner; if authentication/API failure prevents Operations opening, use the external status-page link directly. External monitoring continues while this page is closed; configuring the panel does not verify email alert delivery or guarantee uptime. No monitor creation, pause, billing or provider-write controls are added.
+An independent **External uptime monitoring** panel displays the owner-configured public UptimeRobot badge for the hosted rakkio website/API and links to its uptime/outage history: <https://stats.uptimerobot.com/xz23PeH80u>. It uses the badge's SVG image, not third-party scripts or a secret API key. Its public identifiers live in `apps/web/src/components/OperationsUptime.vue`; self-hosted installations must replace them with their own monitor before treating the panel as their installation's uptime. The badge refreshes every 60 seconds while visible, follows the provider's actual check/cache intervals and switches with the app theme. A failed/15-second-timed-out image reports unknown, never Up inferred from a healthy snapshot. Receipt time is not monitor-check time. The panel remains independent of snapshot failures for an already-authorized owner; if authentication/API failure prevents Operations opening, use the external status-page link directly. External monitoring continues while this page is closed; configuring the panel does not verify email alert delivery or guarantee uptime. No monitor creation, pause, billing or provider-write controls are added.
 
 For final failures or persistent waiting work, inspect worker logs through your normal authorized operational workflow and verify Google integration configuration. Do not share raw provider errors or tokens. For capacity issues, review the relevant provider console before changing limits. This page has no job controls and sends no alerts when closed.
 
@@ -272,7 +272,7 @@ Back up both persistent storage classes together:
 Example local backup commands:
 
 ```bash
-docker compose exec -T postgres pg_dump -U prosepect -Fc prosepect > prosepect-postgres.dump
+docker compose exec -T postgres pg_dump -U prosepect -Fc prosepect > rakkio-postgres.dump
 docker compose run --rm --entrypoint /bin/sh -v "$PWD/backups:/backup" minio-init -c \
   'mc alias set local http://minio:9000 "$S3_ACCESS_KEY_ID" "$S3_SECRET_ACCESS_KEY" && mc mirror local/prosepect /backup/objects'
 ```
@@ -280,8 +280,8 @@ docker compose run --rm --entrypoint /bin/sh -v "$PWD/backups:/backup" minio-ini
 For the hosted beta, use `pg_dump` against Neon and copy R2 objects to an independent encrypted disk or storage account. The database provider's short point-in-time recovery window and R2 itself are not independent backups. Example direct commands are:
 
 ```bash
-pg_dump "$DATABASE_URL" --format=custom --file=prosepect-postgres.dump
-aws s3 sync "s3://$S3_BUCKET" prosepect-r2-backup \
+pg_dump "$DATABASE_URL" --format=custom --file=rakkio-postgres.dump
+aws s3 sync "s3://$S3_BUCKET" rakkio-r2-backup \
   --endpoint-url "$S3_ENDPOINT" \
   --region auto
 ```
