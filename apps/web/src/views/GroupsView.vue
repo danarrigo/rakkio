@@ -361,8 +361,7 @@ onBeforeUnmount(() => {
               Create a group
             </summary>
             <form class="mt-3" aria-label="Create group" @submit.prevent="create">
-              <h2 class="text-sm font-semibold">Create a group</h2>
-              <label class="field-label mt-4" for="group-name">Group name</label
+              <label class="field-label" for="group-name">Group name</label
               ><input
                 id="group-name"
                 v-model="name"

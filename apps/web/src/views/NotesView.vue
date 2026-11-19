@@ -279,7 +279,13 @@ async function remove() {
             <div class="min-w-0 [overflow-wrap:anywhere]">
               <h2 class="text-2xl font-semibold tracking-[-0.03em]">{{ selected.title }}</h2>
               <p class="mt-2 text-xs text-slate-400">
-                Updated {{ new Date(selected.updated_at).toLocaleString() }}
+                Updated
+                {{
+                  new Date(selected.updated_at).toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })
+                }}
               </p>
             </div>
             <div class="flex shrink-0 gap-1">

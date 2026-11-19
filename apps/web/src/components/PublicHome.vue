@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import * as api from '../api/client'
-import BrandLogo from './BrandLogo.vue'
+import PublicSiteFooter from './PublicSiteFooter.vue'
+import PublicSiteHeader from './PublicSiteHeader.vue'
 
 const route = useRoute()
 const legalAccepted = ref(false)
@@ -33,32 +34,7 @@ function signIn() {
 
 <template>
   <div class="min-h-dvh bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-50">
-    <header class="border-b border-slate-200 dark:border-slate-800">
-      <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-        <RouterLink
-          class="shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
-          to="/"
-        >
-          <BrandLogo />
-        </RouterLink>
-        <nav aria-label="Public navigation" class="flex items-center gap-5 text-xs text-slate-500">
-          <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/privacy">
-            Privacy
-          </RouterLink>
-          <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/terms">
-            Terms
-          </RouterLink>
-          <a
-            class="hidden hover:text-slate-950 dark:hover:text-white sm:inline"
-            href="https://github.com/danarrigo/rakkio"
-            rel="noreferrer"
-            target="_blank"
-          >
-            Source
-          </a>
-        </nav>
-      </div>
-    </header>
+    <PublicSiteHeader />
 
     <main>
       <section
@@ -78,7 +54,7 @@ function signIn() {
           </p>
         </div>
 
-        <div class="border-y border-slate-200 py-8 dark:border-slate-800 lg:border lg:p-8">
+        <div class="border-t border-slate-200 pt-8 dark:border-slate-800 lg:border lg:p-8">
           <p class="text-sm font-semibold">Open your workspace</p>
           <p
             v-if="authenticationError"
@@ -175,21 +151,6 @@ function signIn() {
       </section>
     </main>
 
-    <footer class="border-t border-slate-200 dark:border-slate-800">
-      <div
-        class="mx-auto flex max-w-6xl flex-col gap-3 px-5 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"
-      >
-        <span>Independently operated by Daniel in Indonesia.</span>
-        <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/delete-account">
-          Delete account
-        </RouterLink>
-        <a
-          class="hover:text-slate-950 dark:hover:text-white"
-          href="mailto:daniel.manurung.dev@gmail.com"
-        >
-          daniel.manurung.dev@gmail.com
-        </a>
-      </div>
-    </footer>
+    <PublicSiteFooter />
   </div>
 </template>

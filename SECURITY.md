@@ -23,11 +23,15 @@ Google sign-in uses `oauth2` for authorization-code exchange and PKCE, and `json
 
 SQLx is temporarily pinned to upstream commit `10462fa4414c6c7f1ed1d39bb31678e3b726878c` because its published 0.9.0 SQLite dependency cannot select the fix for RUSTSEC-2026-0459. That exact upstream change permits patched `libsqlite3-sys`; the remote-generated lock selects 0.39.1. The application uses PostgreSQL, not untrusted local SQLite/WAL files, but the lockfile advisory gate remains enforced without exceptions. Replace the Git pin with a patched published SQLx release when available. All SQLx packages use the same pinned source, and database/migration behavior must pass the full remote regression suite before release.
 
+### Accepted Rust advisories
+
+RUSTSEC-2026-0543 (`chrono`) and RUSTSEC-2026-0542 (`humantime`) are informational "unmaintained" notices published 2026-09-14 with no patched versions; neither reports a vulnerability. Both remain in the lockfile through required dependencies: `object_store` 0.14 (attachment storage) requires `chrono` and `humantime`, and `oauth2` 5 requires `chrono`. Only the mandatory gate ignores these two IDs; the full JSON report still records them. Remove the ignores once `object_store` and `oauth2` releases drop these crates, then migrate application code to `jiff` or `time`. Review by 2027-03-01.
+
 ## Automated security gates
 
 `.github/workflows/security.yml` audits both committed lockfiles on pushes to `main`, pull requests, manual runs, and a daily best-effort schedule so newly published advisories are checked without code changes. No production credentials or issue creation permissions are used.
 
-- Rust runs only on GitHub-hosted CI using `cargo-audit`. An unfiltered JSON artifact records every advisory. The **mandatory subsequent gate** denies every advisory and warning (including unmaintained/unsound/yanked findings), without ignores. `rust-dependency-audit` retains both the full report and the acceptance-gate log for 14 days. A diagnostic step marked allowed-to-fail does not waive the mandatory gate.
+- Rust runs only on GitHub-hosted CI using `cargo-audit`. An unfiltered JSON artifact records every advisory. The **mandatory subsequent gate** denies every advisory and warning (including unmaintained/unsound/yanked findings), except the documented exceptions below. `rust-dependency-audit` retains both the full report and the acceptance-gate log for 14 days. A diagnostic step marked allowed-to-fail does not waive the mandatory gate.
 - npm audits the complete lockfile, including development dependencies, at `--audit-level=low`. There are no npm exceptions. `npm-dependency-audit` retains the JSON report for 14 days, including failures.
 - Gitleaks scans full Git history using a version/checksum-pinned binary and fully redacted output. `.gitleaksignore` contains only the exact historical fingerprints of the documented disposable OIDC signing fixture and synthetic webhook token. No whole path, rule or commit is excluded; newly committed secrets still fail. These fixture fingerprints do not waive any dependency gate. Redacted `secret-scan` evidence is retained for 14 days.
 

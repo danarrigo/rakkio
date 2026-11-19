@@ -94,11 +94,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="mx-auto max-w-6xl px-5 py-8 sm:px-8" aria-labelledby="operations-title">
+  <section
+    class="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:px-12 lg:py-14"
+    aria-labelledby="operations-title"
+  >
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 id="operations-title" class="text-2xl font-semibold tracking-tight">Operations</h1>
-        <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+        <h1 id="operations-title" class="page-title !mt-0">Operations</h1>
+        <p class="page-description">
           Service-wide snapshot. Read-only, not a live monitoring guarantee.
         </p>
       </div>

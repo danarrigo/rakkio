@@ -14,8 +14,8 @@ const tasks = computed(() =>
 <template>
   <div class="mx-auto max-w-5xl space-y-8 px-5 py-10 sm:px-8 lg:px-12 lg:py-14">
     <header>
-      <h1 class="text-2xl font-semibold tracking-tight">Inbox</h1>
-      <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+      <h1 class="page-title !mt-0">Inbox</h1>
+      <p class="page-description">
         Capture tasks here. Assign a project or complete them when ready.
       </p>
     </header>
