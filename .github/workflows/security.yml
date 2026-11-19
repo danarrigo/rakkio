@@ -51,12 +51,18 @@ jobs:
           tool: cargo-audit
           fallback: none
       # Preserve structured evidence even when an advisory is found. The next
-      # mandatory step fails on every advisory or warning, without exceptions.
+      # mandatory step fails on every advisory or warning except the documented
+      # exceptions in SECURITY.md.
       - name: Record all Rust advisories
         continue-on-error: true
         run: cargo audit --file Cargo.lock --deny warnings --json > cargo-audit-full.json
       - name: Block every Rust advisory
-        run: cargo audit --file Cargo.lock --deny warnings 2>&1 | tee cargo-audit-gate.txt
+        # RUSTSEC-2026-0542/0543: chrono and humantime are unmaintained, with no
+        # patched release; object_store and oauth2 require chrono. See SECURITY.md.
+        run: >-
+          cargo audit --file Cargo.lock --deny warnings
+          --ignore RUSTSEC-2026-0542 --ignore RUSTSEC-2026-0543
+          2>&1 | tee cargo-audit-gate.txt
       - name: Preserve Rust audit evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
