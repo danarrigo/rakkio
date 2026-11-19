@@ -256,8 +256,8 @@ onBeforeUnmount(() => {
           class="text-sm font-medium text-slate-600 underline underline-offset-4 dark:text-slate-300"
           >Back to Groups</RouterLink
         >
-        <h1 class="mt-3 text-2xl font-semibold tracking-tight">Assignments</h1>
-        <p v-if="group" class="mt-1 break-words text-sm text-slate-600 dark:text-slate-400">
+        <h1 class="page-title mt-3">Assignments</h1>
+        <p v-if="group" class="page-description break-words">
           {{ group.name }} · {{ group.my_role }}
         </p>
       </div>

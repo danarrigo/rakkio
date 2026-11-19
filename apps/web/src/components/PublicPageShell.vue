@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
-import BrandLogo from './BrandLogo.vue'
+import PublicSiteFooter from './PublicSiteFooter.vue'
+import PublicSiteHeader from './PublicSiteHeader.vue'
 
 withDefaults(
   defineProps<{
@@ -15,24 +15,7 @@ withDefaults(
 
 <template>
   <div class="flex min-h-dvh flex-col bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-50">
-    <header class="border-b border-slate-200 dark:border-slate-800">
-      <div class="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
-        <RouterLink
-          class="shrink-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
-          to="/"
-        >
-          <BrandLogo />
-        </RouterLink>
-        <nav aria-label="Legal pages" class="flex items-center gap-5 text-xs text-slate-500">
-          <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/privacy">
-            Privacy
-          </RouterLink>
-          <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/terms">
-            Terms
-          </RouterLink>
-        </nav>
-      </div>
-    </header>
+    <PublicSiteHeader />
 
     <main id="public-document" class="mx-auto w-full max-w-3xl flex-1 px-5 py-14 sm:px-8 sm:py-20">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ eyebrow }}</p>
@@ -47,22 +30,7 @@ withDefaults(
       </article>
     </main>
 
-    <footer class="border-t border-slate-200 dark:border-slate-800">
-      <div
-        class="mx-auto flex max-w-5xl flex-col gap-3 px-5 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"
-      >
-        <span>rakkio is independently operated by Daniel in Indonesia.</span>
-        <RouterLink class="hover:text-slate-950 dark:hover:text-white" to="/delete-account">
-          Delete account
-        </RouterLink>
-        <a
-          class="hover:text-slate-950 dark:hover:text-white"
-          href="mailto:daniel.manurung.dev@gmail.com"
-        >
-          daniel.manurung.dev@gmail.com
-        </a>
-      </div>
-    </footer>
+    <PublicSiteFooter />
   </div>
 </template>
 

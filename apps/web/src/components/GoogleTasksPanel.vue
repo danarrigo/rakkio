@@ -295,7 +295,13 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <p v-if="status.last_synced_at" class="text-sm text-slate-500 dark:text-slate-400">
-          Last Tasks sync: {{ new Date(status.last_synced_at).toLocaleString() }}
+          Last Tasks sync:
+          {{
+            new Date(status.last_synced_at).toLocaleString(undefined, {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })
+          }}
         </p>
         <p v-if="status.last_error" role="alert" class="text-sm text-red-600 dark:text-red-400">
           {{ status.last_error }}

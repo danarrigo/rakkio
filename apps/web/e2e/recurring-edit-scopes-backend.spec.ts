@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 import type { Task } from '../src/api/types'
 
+// Date-only deadlines resolve to local end of day; the expected instants assume UTC.
+test.use({ timezoneId: 'UTC' })
+
 // Real isolated CI API, normal session cookies/CSRF, no intercepted responses.
 test('real backend: one-off edits preserve cadence and forward edits preserve completed history', async ({
   page,

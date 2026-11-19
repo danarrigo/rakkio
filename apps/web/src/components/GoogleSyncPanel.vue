@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-    <p class="mt-4 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+    <p class="mt-4 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
       Connecting lets rakkio view your Google calendar list and access roles and read, create,
       update, or delete events on calendars allowed by your Google permissions. rakkio stores
       synchronized event fields and encrypted OAuth credentials only to provide calendar and
@@ -216,7 +216,7 @@ onBeforeUnmount(() => {
     <p v-if="message" role="status" class="mt-3 text-xs text-slate-500">{{ message }}</p>
     <p v-if="error" role="alert" class="mt-3 text-xs text-rose-600">{{ error }}</p>
     <button
-      class="mt-3 text-xs underline"
+      class="mt-4 text-sm font-medium underline underline-offset-4 disabled:opacity-50"
       type="button"
       :disabled="loading || busy"
       @click="refresh"
@@ -283,7 +283,13 @@ onBeforeUnmount(() => {
         :key="`${entry.created_at}:${entry.kind}`"
         class="mt-2 text-xs text-slate-500"
       >
-        {{ entry.message }} · {{ new Date(entry.created_at).toLocaleString() }}
+        {{ entry.message }} ·
+        {{
+          new Date(entry.created_at).toLocaleString(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })
+        }}
       </p>
     </div>
     <div v-if="integration?.connected" class="mt-6 flex flex-wrap items-center gap-4 text-xs">

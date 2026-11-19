@@ -26,6 +26,9 @@ const router = useRouter()
 const visibleProjects = computed(() =>
   store.projects.filter((project) => project.status !== 'archived'),
 )
+const inboxCount = computed(
+  () => store.tasks.filter((task) => !task.project_id && task.status !== 'completed').length,
+)
 
 watch(
   () => props.open,
@@ -83,7 +86,9 @@ function showAllProjects() {
         to="/inbox"
         @click="emit('close')"
       >
-        <Inbox :size="16" /> Inbox
+        <Inbox :size="17" />
+        <span>Inbox</span>
+        <span v-if="inboxCount" class="nav-count">{{ inboxCount }}</span>
       </RouterLink>
       <RouterLink
         class="nav-item"
@@ -91,7 +96,7 @@ function showAllProjects() {
         to="/"
         @click="emit('close')"
       >
-        <LayoutDashboard :size="18" />
+        <LayoutDashboard :size="17" />
         <span>Today</span>
       </RouterLink>
       <RouterLink
@@ -121,18 +126,19 @@ function showAllProjects() {
       >
         <FolderKanban :size="17" />
         <span>Projects</span>
-        <span v-if="store.openTasks.length" class="nav-count">{{ store.openTasks.length }}</span>
+        <span v-if="visibleProjects.length" class="nav-count">{{ visibleProjects.length }}</span>
+      </RouterLink>
+      <RouterLink
+        v-if="groups.enabled"
+        class="nav-item"
+        :class="{ active: route.name === 'groups' || route.name === 'group-assignments' }"
+        to="/groups"
+        @click="emit('close')"
+      >
+        <Users :size="17" />
+        <span>Groups</span>
       </RouterLink>
     </nav>
-
-    <RouterLink
-      v-if="groups.enabled"
-      class="nav-item mt-2"
-      :class="{ active: route.name === 'groups' || route.name === 'group-assignments' }"
-      to="/groups"
-      @click="emit('close')"
-      ><Users :size="17" /><span>Groups</span></RouterLink
-    >
 
     <div v-if="visibleProjects.length" class="mt-8 px-2">
       <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400">Your projects</span>
