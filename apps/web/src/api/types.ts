@@ -58,6 +58,7 @@ export type GoogleIntegrationStatus = components['schemas']['GoogleIntegrationSt
 export type GoogleTasksStatus = components['schemas']['GoogleTasksStatus']
 export type EdunexStatus = components['schemas']['EdunexStatus']
 export type EdunexSyncReport = components['schemas']['EdunexSyncReport']
+export type EdunexAssignment = components['schemas']['EdunexAssignment']
 export type GoogleTaskRecovery = components['schemas']['GoogleTaskRecovery']
 export type GoogleTaskConflict = components['schemas']['GoogleTaskConflict']
 export type GoogleTaskResolutionRequest = components['schemas']['GoogleTaskResolutionRequest']

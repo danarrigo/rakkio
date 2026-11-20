@@ -187,8 +187,7 @@ pub struct AppState {
         google_tasks_routes::recoveries,
         google_tasks_routes::leave_unlinked,
         crate::edunex::status,
-        crate::edunex::connect,
-        crate::edunex::synchronize,
+        crate::edunex::import,
         crate::edunex::disconnect,
         sync_routes::google_status,
         sync_routes::discover_google_calendars,
@@ -255,7 +254,8 @@ pub struct AppState {
         crate::edunex::EdunexStatus,
         crate::edunex::EdunexSyncReport,
         crate::edunex::EdunexSyncSummary,
-        crate::edunex::EdunexConnectRequest,
+        crate::edunex::EdunexAssignment,
+        crate::edunex::EdunexImportRequest,
         crate::models::DeleteTaskWithUndoRequest,
         crate::models::TaskDeleteUndo,
         crate::models::TaskDeleteUndoList,
@@ -627,14 +627,9 @@ pub fn build(config: &Config, store: Store) -> anyhow::Result<Router> {
         )
         .route(
             "/integrations/edunex",
-            get(crate::edunex::status)
-                .put(crate::edunex::connect)
-                .delete(crate::edunex::disconnect),
+            get(crate::edunex::status).delete(crate::edunex::disconnect),
         )
-        .route(
-            "/integrations/edunex/sync",
-            post(crate::edunex::synchronize),
-        )
+        .route("/integrations/edunex/import", post(crate::edunex::import))
         .route(
             "/integrations/google/tasks/lists",
             get(google_tasks_routes::lists).post(google_tasks_routes::create_list),

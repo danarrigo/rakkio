@@ -15,6 +15,7 @@ import {
   X,
 } from '@lucide/vue'
 import * as api from './api/client'
+import { autoSynchronize as autoSynchronizeEdunex } from './edunex'
 import AppSidebar from './components/AppSidebar.vue'
 import BrandLogo from './components/BrandLogo.vue'
 import CalendarMoveFeedback from './components/CalendarMoveFeedback.vue'
@@ -198,6 +199,20 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   event.preventDefault()
   if (resolution.action) runKeyboardAction(resolution.action)
 }
+
+// Edunex only accepts browser connections, so the owner's open tab syncs it.
+watch(
+  () => store.operationsAllowed,
+  async (allowed) => {
+    if (!allowed) return
+    try {
+      if (await autoSynchronizeEdunex()) await store.refresh()
+    } catch (cause) {
+      // Settings shows Edunex problems; opening rakkio stays quiet.
+      console.warn('Edunex sync skipped', cause)
+    }
+  },
+)
 
 onMounted(() => {
   applyTheme()

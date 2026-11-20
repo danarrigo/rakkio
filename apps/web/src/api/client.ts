@@ -22,6 +22,7 @@ import type {
   FileRecord,
   FileUsage,
   GoogleIntegrationStatus,
+  EdunexAssignment,
   EdunexStatus,
   EdunexSyncReport,
   GoogleTasksStatus,
@@ -827,12 +828,10 @@ export async function getEdunexStatus(signal?: AbortSignal): Promise<EdunexStatu
   return unwrap(await client.GET('/api/v1/integrations/edunex', { signal }))
 }
 
-export async function connectEdunex(token: string): Promise<EdunexSyncReport> {
-  return unwrap(await client.PUT('/api/v1/integrations/edunex', { body: { token } }))
-}
-
-export async function synchronizeEdunex(): Promise<EdunexSyncReport> {
-  return unwrap(await client.POST('/api/v1/integrations/edunex/sync'))
+export async function importEdunexAssignments(
+  assignments: EdunexAssignment[],
+): Promise<EdunexSyncReport> {
+  return unwrap(await client.POST('/api/v1/integrations/edunex/import', { body: { assignments } }))
 }
 
 export async function disconnectEdunex(): Promise<void> {
