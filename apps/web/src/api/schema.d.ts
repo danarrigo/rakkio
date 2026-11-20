@@ -812,7 +812,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["edunex_status"];
-        put: operations["edunex_connect"];
+        put?: never;
         post?: never;
         delete: operations["edunex_disconnect"];
         options?: never;
@@ -820,7 +820,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/integrations/edunex/sync": {
+    "/api/v1/integrations/edunex/import": {
         parameters: {
             query?: never;
             header?: never;
@@ -829,7 +829,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["edunex_synchronize"];
+        post: operations["edunex_import"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1704,19 +1704,26 @@ export interface components {
             consent_version: string;
             install_url?: string | null;
         };
-        EdunexConnectRequest: {
-            /** @description The bearer token from the Edunex web app, with or without `Bearer `. */
-            token: string;
+        /** @description An Edunex assignment, normalized by the browser. */
+        EdunexAssignment: {
+            course_name?: string;
+            /** Format: date-time */
+            due_at: string;
+            /** @description The Edunex task id. */
+            id: string;
+            /** @description Whether an answer has been sent on Edunex. */
+            submitted: boolean;
+            title: string;
+        };
+        EdunexImportRequest: {
+            assignments: components["schemas"]["EdunexAssignment"][];
         };
         EdunexStatus: {
             connected: boolean;
-            last_error?: string | null;
             /** Format: date-time */
             last_synced_at?: string | null;
             /** Format: int64 */
             linked_tasks: number;
-            /** Format: date-time */
-            token_expires_at?: string | null;
         };
         EdunexSyncReport: {
             status: components["schemas"]["EdunexStatus"];
@@ -5079,61 +5086,6 @@ export interface operations {
             };
         };
     };
-    edunex_connect: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EdunexConnectRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EdunexSyncReport"];
-                };
-            };
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     edunex_disconnect: {
         parameters: {
             query?: never;
@@ -5167,14 +5119,18 @@ export interface operations {
             };
         };
     };
-    edunex_synchronize: {
+    edunex_import: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdunexImportRequest"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -5200,23 +5156,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            502: {
                 headers: {
                     [name: string]: unknown;
                 };

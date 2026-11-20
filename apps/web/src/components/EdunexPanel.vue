@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import * as api from '../api/client'
 import type { EdunexStatus, EdunexSyncReport } from '../api/types'
+import * as edunex from '../edunex'
 import { useWorkspaceStore } from '../stores/workspace'
 
 const store = useWorkspaceStore()
 const status = ref<EdunexStatus | null>(null)
+const savedToken = ref(edunex.readToken())
 const token = ref('')
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const message = ref('')
 
+const expiresAt = computed(() => (savedToken.value ? edunex.tokenExpiry(savedToken.value) : null))
 const dateTime = (value: string) =>
   new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-const date = (value: string) =>
-  new Date(value).toLocaleDateString(undefined, { dateStyle: 'medium' })
 
 function describe(cause: unknown) {
-  if (cause instanceof api.ApiError && cause.status === 502)
-    return 'Edunex could not be reached. Try again later.'
   return cause instanceof Error ? cause.message : 'Something went wrong. Try again.'
 }
 
@@ -33,7 +32,6 @@ async function load() {
   loading.value = true
   try {
     status.value = await api.getEdunexStatus()
-    error.value = ''
   } catch (cause) {
     error.value = describe(cause)
   } finally {
@@ -41,23 +39,39 @@ async function load() {
   }
 }
 
-async function run(action: () => Promise<EdunexSyncReport>) {
+async function sync(value: string) {
   busy.value = true
   error.value = ''
   message.value = ''
   try {
-    const report = await action()
+    const report = await edunex.synchronize(value)
+    if (value !== savedToken.value) {
+      edunex.saveToken(value)
+      savedToken.value = value
+    }
+    token.value = ''
     status.value = report.status
     message.value = summarize(report)
-    token.value = ''
     await store.refresh()
   } catch (cause) {
-    const failure = describe(cause)
-    await load()
-    error.value = failure
+    error.value = describe(cause)
   } finally {
     busy.value = false
   }
+}
+
+function connect() {
+  const value = edunex.normalizeToken(token.value)
+  if (!value || /\s/.test(value)) {
+    error.value = 'Paste the Edunex token exactly as copied.'
+    return
+  }
+  const expiry = edunex.tokenExpiry(value)
+  if (expiry && expiry.getTime() <= Date.now()) {
+    error.value = 'This Edunex token has expired. Sign in to Edunex again and copy a fresh one.'
+    return
+  }
+  void sync(value)
 }
 
 async function disconnect() {
@@ -67,6 +81,8 @@ async function disconnect() {
   message.value = ''
   try {
     await api.disconnectEdunex()
+    edunex.forgetToken()
+    savedToken.value = null
     message.value = 'Edunex disconnected. Imported tasks were kept.'
     await load()
   } catch (cause) {
@@ -94,17 +110,17 @@ onMounted(load)
     <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
       Imports your Edunex assignments as tasks with their deadlines and the
       <code>edunex</code> label. Deadline changes on Edunex are copied, and submitting an assignment
-      marks its task done. Tasks you delete here are not imported again. rakkio checks Edunex every
-      few hours.
+      marks its task done. Tasks you delete here are not imported again. This browser syncs when you
+      open rakkio, at most every few hours.
     </p>
 
     <p v-if="loading && !status" role="status" class="mt-4 text-sm text-slate-500">
       Checking connection…
     </p>
     <template v-else-if="status">
-      <div v-if="status.connected" class="mt-4 space-y-1 text-sm">
+      <div v-if="status.connected || savedToken" class="mt-4 space-y-1 text-sm">
         <p>
-          Connected · {{ status.linked_tasks }}
+          {{ status.linked_tasks }}
           {{ status.linked_tasks === 1 ? 'assignment' : 'assignments' }} imported
         </p>
         <p class="text-slate-500 dark:text-slate-400">
@@ -112,22 +128,18 @@ onMounted(load)
             >Last synced {{ dateTime(status.last_synced_at) }}</span
           >
           <span v-else>Not synced yet</span>
-          <span v-if="status.token_expires_at">
-            · Token expires {{ date(status.token_expires_at) }}</span
+          <span v-if="savedToken">
+            · Token saved in this browser<span v-if="expiresAt">
+              until {{ expiresAt.toLocaleDateString(undefined, { dateStyle: 'medium' }) }}</span
+            ></span
           >
-        </p>
-        <p v-if="status.last_error" role="alert" class="text-sm text-amber-700 dark:text-amber-400">
-          {{ status.last_error }}
+          <span v-else> · No token in this browser</span>
         </p>
       </div>
 
-      <form
-        class="mt-5 max-w-2xl"
-        aria-label="Connect Edunex"
-        @submit.prevent="run(() => api.connectEdunex(token))"
-      >
+      <form class="mt-5 max-w-2xl" aria-label="Connect Edunex" @submit.prevent="connect">
         <label class="field-label" for="edunex-token">
-          {{ status.connected ? 'Replace token' : 'Edunex token' }}
+          {{ savedToken ? 'Replace token' : 'Edunex token' }}
         </label>
         <div class="mt-2 flex flex-wrap gap-2">
           <input
@@ -141,7 +153,7 @@ onMounted(load)
             :disabled="busy"
           />
           <button class="primary-button" type="submit" :disabled="busy || !token.trim()">
-            {{ busy ? 'Connecting…' : status.connected ? 'Replace and sync' : 'Connect and sync' }}
+            {{ busy ? 'Syncing…' : savedToken ? 'Replace and sync' : 'Connect and sync' }}
           </button>
         </div>
         <details class="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
@@ -158,18 +170,19 @@ onMounted(load)
             </li>
           </ol>
           <p class="mt-2">
-            The token acts as your Edunex login, so treat it like a password. rakkio stores it
-            encrypted and sends it only to Edunex.
+            The token acts as your Edunex login, so treat it like a password. It stays in this
+            browser and is sent only to Edunex, never to rakkio's server.
           </p>
         </details>
       </form>
 
-      <div v-if="status.connected" class="mt-5 flex flex-wrap gap-2">
+      <div v-if="savedToken || status.connected" class="mt-5 flex flex-wrap gap-2">
         <button
+          v-if="savedToken"
           class="secondary-button"
           type="button"
           :disabled="busy"
-          @click="run(api.synchronizeEdunex)"
+          @click="sync(savedToken)"
         >
           {{ busy ? 'Syncing…' : 'Sync now' }}
         </button>

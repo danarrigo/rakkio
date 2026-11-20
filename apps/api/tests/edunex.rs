@@ -1,78 +1,12 @@
-use std::collections::HashMap;
-
-use axum::{
-    Json, Router,
-    extract::Query,
-    http::{HeaderMap, StatusCode},
-    routing::get,
-};
 use chrono::{DateTime, Duration, Utc};
 use prosepect_api::{
-    edunex::{self, EdunexClient, EdunexError, EdunexSyncSummary, EdunexTask},
+    edunex::{self, EdunexAssignment, EdunexSyncSummary},
+    error::AppError,
     models::TaskStatus,
     store::Store,
 };
-use serde_json::{Value, json};
 use sqlx::PgPool;
-use tokio::net::TcpListener;
 use uuid::Uuid;
-
-async fn fake_edunex(app: Router) -> (EdunexClient, tokio::task::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}/", listener.local_addr().unwrap())
-        .parse()
-        .unwrap();
-    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (EdunexClient::new().unwrap().with_api_base(base), server)
-}
-
-fn resource(id: usize) -> Value {
-    json!({"type": "tasks", "id": id.to_string(), "attributes": {
-        "name": format!("Task {id}"), "course_code": "IF1", "course_name": "Course",
-        "end_at": "2026-12-01T23:59:00+07:00", "answers": []}})
-}
-
-#[tokio::test]
-async fn follows_offsets_until_the_reported_total_with_the_bearer_token() {
-    async fn page(Query(query): Query<HashMap<String, String>>, headers: HeaderMap) -> Json<Value> {
-        assert_eq!(headers["authorization"], "Bearer fixture-token");
-        assert_eq!(query["filter[is_active][is]"], "1");
-        // The server caps pages below the requested size; offsets must follow
-        // what was actually returned.
-        let offset: usize = query["page[offset]"].parse().unwrap();
-        let items: Vec<Value> = (offset..(offset + 10).min(23)).map(resource).collect();
-        Json(json!({"meta": {"count": items.len(), "total": 23}, "data": items}))
-    }
-    let (client, server) = fake_edunex(Router::new().route("/course/tasks", get(page))).await;
-    let tasks = client.tasks("fixture-token").await.unwrap();
-    server.abort();
-    assert_eq!(tasks.len(), 23);
-    assert_eq!(tasks[22].id, "22");
-    assert_eq!(tasks[0].title, "[IF1] Task 0");
-}
-
-#[tokio::test]
-async fn reports_rejected_tokens_separately_from_outages() {
-    let (client, server) = fake_edunex(
-        Router::new().route("/course/tasks", get(|| async { StatusCode::UNAUTHORIZED })),
-    )
-    .await;
-    assert!(matches!(
-        client.tasks("expired").await,
-        Err(EdunexError::Unauthorized)
-    ));
-    server.abort();
-
-    let (client, server) = fake_edunex(
-        Router::new().route("/course/tasks", get(|| async { StatusCode::BAD_GATEWAY })),
-    )
-    .await;
-    assert!(matches!(
-        client.tasks("token").await,
-        Err(EdunexError::Unavailable(_))
-    ));
-    server.abort();
-}
 
 async fn user(pool: &PgPool) -> anyhow::Result<Uuid> {
     let id = Uuid::now_v7();
@@ -84,8 +18,8 @@ async fn user(pool: &PgPool) -> anyhow::Result<Uuid> {
     Ok(id)
 }
 
-fn task(id: &str, title: &str, due_at: DateTime<Utc>, submitted: bool) -> EdunexTask {
-    EdunexTask {
+fn task(id: &str, title: &str, due_at: DateTime<Utc>, submitted: bool) -> EdunexAssignment {
+    EdunexAssignment {
         id: id.into(),
         title: title.into(),
         course_name: "Algoritma".into(),
@@ -190,6 +124,23 @@ async fn deleted_tasks_are_not_imported_again(pool: PgPool) -> anyhow::Result<()
         edunex::apply(&store, owner, &remote, now).await?,
         EdunexSyncSummary::default()
     );
+    assert!(imported(&pool, owner).await?.is_empty());
+    Ok(())
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn rejects_malformed_assignments_without_importing_any(pool: PgPool) -> anyhow::Result<()> {
+    let store = Store::from_pool(pool.clone());
+    let owner = user(&pool).await?;
+    let now = Utc::now();
+    let remote = [
+        task("1", "[IF1] Valid", now + Duration::days(1), false),
+        task("", "Missing id", now + Duration::days(1), false),
+    ];
+    assert!(matches!(
+        edunex::apply(&store, owner, &remote, now).await,
+        Err(AppError::Validation(_))
+    ));
     assert!(imported(&pool, owner).await?.is_empty());
     Ok(())
 }

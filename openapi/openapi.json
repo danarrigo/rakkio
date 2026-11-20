@@ -3709,77 +3709,6 @@
           }
         ]
       },
-      "put": {
-        "tags": [
-          "synchronization"
-        ],
-        "operationId": "edunex_connect",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EdunexConnectRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EdunexSyncReport"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "502": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session_cookie": []
-          },
-          {
-            "development_user": []
-          }
-        ]
-      },
       "delete": {
         "tags": [
           "synchronization"
@@ -3816,12 +3745,22 @@
         ]
       }
     },
-    "/api/v1/integrations/edunex/sync": {
+    "/api/v1/integrations/edunex/import": {
       "post": {
         "tags": [
           "synchronization"
         ],
-        "operationId": "edunex_synchronize",
+        "operationId": "edunex_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdunexImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -3850,25 +3789,7 @@
               }
             }
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "502": {
             "content": {
               "application/json": {
                 "schema": {
@@ -7507,15 +7428,47 @@
           }
         }
       },
-      "EdunexConnectRequest": {
+      "EdunexAssignment": {
         "type": "object",
+        "description": "An Edunex assignment, normalized by the browser.",
         "required": [
-          "token"
+          "id",
+          "title",
+          "due_at",
+          "submitted"
         ],
         "properties": {
-          "token": {
+          "course_name": {
+            "type": "string"
+          },
+          "due_at": {
             "type": "string",
-            "description": "The bearer token from the Edunex web app, with or without `Bearer `."
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "description": "The Edunex task id."
+          },
+          "submitted": {
+            "type": "boolean",
+            "description": "Whether an answer has been sent on Edunex."
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "EdunexImportRequest": {
+        "type": "object",
+        "required": [
+          "assignments"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EdunexAssignment"
+            }
           }
         }
       },
@@ -7529,12 +7482,6 @@
           "connected": {
             "type": "boolean"
           },
-          "last_error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "last_synced_at": {
             "type": [
               "string",
@@ -7545,13 +7492,6 @@
           "linked_tasks": {
             "type": "integer",
             "format": "int64"
-          },
-          "token_expires_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
           }
         }
       },

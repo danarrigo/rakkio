@@ -12,7 +12,7 @@
     }
     handle {
         header {
-            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api-edunex.cognisia.id; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
             X-Frame-Options DENY
             X-Content-Type-Options nosniff
             Referrer-Policy strict-origin-when-cross-origin
@@ -50,7 +50,7 @@
             X-Frame-Options DENY
             X-Content-Type-Options nosniff
             Referrer-Policy strict-origin-when-cross-origin
-            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api-edunex.cognisia.id; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
         }
         rewrite * /404.html
         file_server
