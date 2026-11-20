@@ -8,6 +8,7 @@ pub mod discord;
 mod discord_agenda;
 pub mod discord_routes;
 mod discord_store;
+pub mod edunex;
 pub mod error;
 pub mod export_routes;
 mod export_store;

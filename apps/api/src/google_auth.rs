@@ -330,7 +330,7 @@ impl GoogleOAuth {
         Ok(())
     }
 
-    fn decrypt(&self, encrypted: &[u8]) -> Result<Vec<u8>> {
+    pub(crate) fn decrypt(&self, encrypted: &[u8]) -> Result<Vec<u8>> {
         if encrypted.len() <= 12 {
             bail!("stored Google credential is invalid");
         }
@@ -341,7 +341,7 @@ impl GoogleOAuth {
             .map_err(|_| anyhow!("failed to decrypt Google credential"))
     }
 
-    fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
+    pub(crate) fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = self
             .inner

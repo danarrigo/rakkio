@@ -3,6 +3,7 @@ import { nextTick, ref, watch } from 'vue'
 import { Download, Trash2, Upload } from '@lucide/vue'
 import * as api from '../api/client'
 import DiscordPanel from '../components/DiscordPanel.vue'
+import EdunexPanel from '../components/EdunexPanel.vue'
 import HandlePanel from '../components/HandlePanel.vue'
 import GoogleSyncPanel from '../components/GoogleSyncPanel.vue'
 import GoogleTasksPanel from '../components/GoogleTasksPanel.vue'
@@ -192,6 +193,7 @@ async function deleteAccount() {
     <DiscordPanel />
     <GoogleSyncPanel />
     <GoogleTasksPanel />
+    <EdunexPanel v-if="store.operationsAllowed" />
 
     <section class="border-b border-slate-200 py-8 dark:border-slate-800">
       <h2 class="text-sm font-semibold">Import from Todoist</h2>
