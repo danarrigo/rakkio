@@ -22,6 +22,8 @@ import type {
   FileRecord,
   FileUsage,
   GoogleIntegrationStatus,
+  EdunexStatus,
+  EdunexSyncReport,
   GoogleTasksStatus,
   GoogleTaskConflict,
   GoogleTaskRecovery,
@@ -819,6 +821,22 @@ export async function resolveGoogleTaskConflict(
     body,
   })
   if (!result.response.ok) unwrap(result)
+}
+
+export async function getEdunexStatus(signal?: AbortSignal): Promise<EdunexStatus> {
+  return unwrap(await client.GET('/api/v1/integrations/edunex', { signal }))
+}
+
+export async function connectEdunex(token: string): Promise<EdunexSyncReport> {
+  return unwrap(await client.PUT('/api/v1/integrations/edunex', { body: { token } }))
+}
+
+export async function synchronizeEdunex(): Promise<EdunexSyncReport> {
+  return unwrap(await client.POST('/api/v1/integrations/edunex/sync'))
+}
+
+export async function disconnectEdunex(): Promise<void> {
+  unwrap(await client.DELETE('/api/v1/integrations/edunex'))
 }
 
 export async function getGoogleTasksStatus(signal?: AbortSignal): Promise<GoogleTasksStatus> {

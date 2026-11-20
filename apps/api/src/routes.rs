@@ -99,6 +99,7 @@ pub async fn run_synchronization_worker(
         .map_err(AppError::Integration)?;
     let processed = service.run_once().await.map_err(AppError::Integration)?;
     state.sync_dispatcher.wake();
+    crate::edunex::synchronize_due(&state).await;
     Ok(Json(WorkerRunResponse {
         enqueued,
         processed,
